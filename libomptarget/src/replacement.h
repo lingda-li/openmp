@@ -6,9 +6,6 @@
 #include <list>
 #include <cstdint>
 
-#define NO_ON_DEMAND
-//#define SEC_LOCAL
-
 // GPU memory mode
 extern int GMode;
 // Whether to recycle GPU memory
@@ -21,6 +18,7 @@ extern int64_t total_dev_size;
 extern uint64_t GlobalTimeStamp;
 
 struct HostDataToTargetTy;
+struct DeviceTy;
 
 /// Data object cluster
 enum data_cluster_type {
@@ -50,5 +48,10 @@ enum mem_map_type {
   MEM_MAPTYPE_HOST,
   MEM_MAPTYPE_UNDECIDE
 };
+
+std::pair<int64_t *, int64_t *>
+target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
+                            int32_t arg_num, int64_t *arg_sizes,
+                            int64_t *arg_types, void *host_ptr);
 
 #endif

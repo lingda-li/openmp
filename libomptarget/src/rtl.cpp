@@ -80,7 +80,8 @@ void RTLsTy::LoadRTLs() {
       LLD_DP("Set mode to SDEV\n");
     } else
       LLD_DP("Default mode is CLUSTER\n");
-  }
+  } else
+    LLD_DP("Default mode is CLUSTER\n");
   envStr = getenv("LLD_RECYCLE");
   if (envStr) {
     RecycleMem = std::stoi(envStr);

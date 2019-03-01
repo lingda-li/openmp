@@ -166,6 +166,7 @@ LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, int64_t Size) {
   return lr;
 }
 
+/*
 // Used by target_data_begin
 // Return the target pointer begin (where the data will be moved).
 // Allocate memory if this is the first occurrence if this mapping.
@@ -214,6 +215,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
   DataMapMtx.unlock();
   return rc;
 }
+*/
 
 // Used by target_data_begin, target_data_end, target_data_update and target.
 // Return the target pointer begin (where the data will be moved).

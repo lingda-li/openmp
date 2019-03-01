@@ -213,7 +213,13 @@ static int32_t member_of(int64_t type) {
 
 /// Internal function to do the mapping and transfer the data to the device
 int target_data_begin(DeviceTy &Device, int32_t arg_num,
-    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types) {
+    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
+    void *host_ptr) {
+  // decide data mapping
+  auto TypeSize = target_uvm_data_mapping_opt(Device, args_base, args, arg_num,
+                                              arg_sizes, arg_types, host_ptr);
+  arg_types = TypeSize.first;
+  arg_sizes = TypeSize.second;
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
     // Ignore private variables and arrays - there is no mapping for them.
@@ -254,11 +260,14 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num,
     if (arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ) {
       DP("Has a pointer entry: \n");
       // base is address of pointer.
+      // lld FIXME: cannot deal with this case now
       Pointer_TgtPtrBegin = Device.getOrAllocTgtPtr(HstPtrBase, HstPtrBase,
           sizeof(void *), Pointer_IsNew, IsImplicit, UpdateRef);
       if (!Pointer_TgtPtrBegin) {
         DP("Call to getOrAllocTgtPtr returned null pointer (device failure or "
             "illegal mapping).\n");
+        free(arg_types);
+        free(arg_sizes);
         return OFFLOAD_FAIL;
       }
       DP("There are %zu bytes allocated at target address " DPxMOD " - is%s new"
@@ -271,7 +280,7 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num,
     }
 
     void *TgtPtrBegin = Device.getOrAllocTgtPtr(HstPtrBegin, HstPtrBase,
-        data_size, IsNew, IsImplicit, UpdateRef);
+        data_size, IsNew, IsImplicit, UpdateRef, arg_types[i]);
     if (!TgtPtrBegin && data_size) {
       // If data_size==0, then the argument could be a zero-length pointer to
       // NULL, so getOrAlloc() returning NULL is not an error.
@@ -306,9 +315,14 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num,
       if (copy) {
         DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
             data_size, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
-        int rt = Device.data_submit(TgtPtrBegin, HstPtrBegin, data_size);
+        // uvm
+        int rt = OFFLOAD_SUCCESS;
+        if (TgtPtrBegin != HstPtrBegin)
+          rt = Device.data_submit(TgtPtrBegin, HstPtrBegin, data_size);
         if (rt != OFFLOAD_SUCCESS) {
           DP("Copying data to device failed.\n");
+          free(arg_types);
+          free(arg_sizes);
           return OFFLOAD_FAIL;
         }
       }
@@ -323,6 +337,8 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num,
           sizeof(void *));
       if (rt != OFFLOAD_SUCCESS) {
         DP("Copying data to device failed.\n");
+        free(arg_types);
+        free(arg_sizes);
         return OFFLOAD_FAIL;
       }
       // create shadow pointers for this entry
@@ -333,6 +349,8 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num,
     }
   }
 
+  free(arg_types);
+  free(arg_sizes);
   return OFFLOAD_SUCCESS;
 }
 
@@ -403,7 +421,10 @@ int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
         if (DelEntry || Always || CopyMember) {
           DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
               data_size, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-          int rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, data_size);
+          // uvm
+          int rt = OFFLOAD_SUCCESS;
+          if (HstPtrBegin != TgtPtrBegin)
+            rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, data_size);
           if (rt != OFFLOAD_SUCCESS) {
             DP("Copying data from device failed.\n");
             return OFFLOAD_FAIL;
@@ -484,7 +505,10 @@ int target_data_update(DeviceTy &Device, int32_t arg_num,
     if (arg_types[i] & OMP_TGT_MAPTYPE_FROM) {
       DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
           arg_sizes[i], DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-      int rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, MapSize);
+      // uvm
+      int rt = OFFLOAD_SUCCESS;
+      if (HstPtrBegin != TgtPtrBegin)
+        rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, MapSize);
       if (rt != OFFLOAD_SUCCESS) {
         DP("Copying data from device failed.\n");
         return OFFLOAD_FAIL;
@@ -511,7 +535,10 @@ int target_data_update(DeviceTy &Device, int32_t arg_num,
     if (arg_types[i] & OMP_TGT_MAPTYPE_TO) {
       DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
           arg_sizes[i], DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
-      int rt = Device.data_submit(TgtPtrBegin, HstPtrBegin, MapSize);
+      // uvm
+      int rt = OFFLOAD_SUCCESS;
+      if (HstPtrBegin != TgtPtrBegin)
+        rt = Device.data_submit(TgtPtrBegin, HstPtrBegin, MapSize);
       if (rt != OFFLOAD_SUCCESS) {
         DP("Copying data to device failed.\n");
         return OFFLOAD_FAIL;
@@ -614,7 +641,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num,
 
   // Move data to device.
   int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
-      arg_types);
+      arg_types, host_ptr);
   if (rc != OFFLOAD_SUCCESS) {
     DP("Call to target_data_begin failed, abort target.\n");
     return OFFLOAD_FAIL;
@@ -699,6 +726,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num,
 #endif
       // If first-private, copy data from host
       if (arg_types[i] & OMP_TGT_MAPTYPE_TO) {
+        // lld: this is required for private
         int rt = Device.data_submit(TgtPtrBegin, HstPtrBegin, arg_sizes[i]);
         if (rt != OFFLOAD_SUCCESS) {
           DP ("Copying data to device failed, failed.\n");
@@ -753,6 +781,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num,
 
   // Deallocate (first-)private arrays
   for (auto it : fpArrays) {
+    // lld: no need for modification since data is always allocated for private
     int rt = Device.RTL->data_delete(Device.RTLDeviceID, it);
     if (rt != OFFLOAD_SUCCESS) {
       DP("Deallocation of (first-)private arrays failed.\n");

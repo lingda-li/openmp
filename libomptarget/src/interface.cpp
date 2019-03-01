@@ -114,7 +114,7 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
 #endif
 
   int rc = target_data_begin(Device, arg_num, args_base,
-      args, arg_sizes, arg_types);
+      args, arg_sizes, arg_types, nullptr);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 }
 
