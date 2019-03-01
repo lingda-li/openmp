@@ -542,9 +542,58 @@ __tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
   return DeviceInfo.getOffloadEntriesTable(device_id);
 }
 
+// Data placement optimization
+void __tgt_rtl_data_opt(int32_t device_id, int64_t size, void *hst_ptr, int32_t type) {
+  if (size == 0)
+    return;
+  LLD_DP("  Apply opt %d to " DPxMOD "\n", type, DPxPTR(hst_ptr));
+  CUresult err = CUDA_SUCCESS;
+  if (type == 0) // pin to host
+    err = cuMemAdvise((CUdeviceptr)hst_ptr, size, CU_MEM_ADVISE_SET_PREFERRED_LOCATION, CU_DEVICE_CPU);
+  else if (type == 1) // prefetch to device
+    err = cuMemPrefetchAsync((CUdeviceptr)hst_ptr, size, device_id, 0);
+  else if (type == 2) // map pages
+    err = cuMemAdvise((CUdeviceptr)hst_ptr, size, CU_MEM_ADVISE_SET_ACCESSED_BY, device_id);
+  else if (type == 3) // duplicate
+    err = cuMemAdvise((CUdeviceptr)hst_ptr, size, CU_MEM_ADVISE_SET_READ_MOSTLY, device_id);
+  else if (type == 4) // soft pin to device
+    err = cuMemAdvise((CUdeviceptr)hst_ptr, size, CU_MEM_ADVISE_SET_PREFERRED_LOCATION, device_id);
+  else if (type == 5) // prefetch to host
+    err = cuMemPrefetchAsync((CUdeviceptr)hst_ptr, size, CU_DEVICE_CPU, 0);
+  else if (type == 6) // unpin
+    err = cuMemAdvise((CUdeviceptr)hst_ptr, size, CU_MEM_ADVISE_UNSET_PREFERRED_LOCATION, device_id);
+  else
+    LLD_DP("Invalid optimization\n");
+  if (err != CUDA_SUCCESS) {
+    LLD_DP("Error optimization failed\n");
+    CUDA_ERR_STRING(err);
+  }
+}
+
 void *__tgt_rtl_data_alloc(int32_t device_id, int64_t size, void *hst_ptr) {
   if (size == 0) {
     return NULL;
+  }
+
+  // uvm
+  if (device_id < 0) {
+    device_id = -device_id - 1;
+    CUdeviceptr ptr;
+    CUresult err = cuCtxSetCurrent(DeviceInfo.Contexts[device_id]);
+    if (err != CUDA_SUCCESS) {
+      DP("Error while trying to set CUDA current context\n");
+      CUDA_ERR_STRING(err);
+      return NULL;
+    }
+    err = cuMemAllocManaged(&ptr, size, CU_MEM_ATTACH_GLOBAL);
+    if (err != CUDA_SUCCESS) {
+      DP("Error while trying to allocate %d\n", err);
+      CUDA_ERR_STRING(err);
+      return NULL;
+    }
+    void *vptr = (void *)ptr;
+    //void *vptr = malloc(size);
+    return vptr;
   }
 
   // Set the context we are using.

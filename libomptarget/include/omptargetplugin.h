@@ -43,6 +43,8 @@ int32_t __tgt_rtl_init_device(int32_t ID);
 __tgt_target_table *__tgt_rtl_load_binary(int32_t ID,
                                           __tgt_device_image *Image);
 
+void __tgt_rtl_data_opt(int32_t ID, int64_t Size, void *HostPtr, int32_t type);
+
 // Allocate data on the particular target device, of the specified size.
 // HostPtr is a address of the host data the allocated target data
 // will be associated with (HostPtr may be NULL if it is not known at

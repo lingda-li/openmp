@@ -20,6 +20,17 @@
 #include <mutex>
 #include <vector>
 
+// GPU memory mode
+extern int GMode;
+// Whether to recycle GPU memory
+extern int RecycleMem;
+// Whether to enable partial mapping
+extern bool PartialMap;
+// Available device memory size
+extern int64_t total_dev_size;
+// Global time stamp
+extern uint64_t GlobalTimeStamp;
+
 // Forward declarations.
 struct RTLInfoTy;
 struct __tgt_bin_desc;
@@ -97,6 +108,11 @@ struct DeviceTy {
   std::mutex DataMapMtx, PendingGlobalsMtx, ShadowMtx;
 
   uint64_t loopTripCnt;
+  // for memory management
+  int64_t deviceSize;
+  int64_t umSize;
+  int64_t allocSize;
+  double devMemRatio;
 
   DeviceTy(RTLInfoTy *RTL)
       : DeviceID(-1), RTL(RTL), RTLDeviceID(-1), IsInit(false), InitFlag(),

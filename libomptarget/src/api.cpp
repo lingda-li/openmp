@@ -52,6 +52,22 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
     return rc;
   }
 
+  // uvm
+  if (device_num == -100) {
+    device_num = omp_get_default_device();
+    if (!device_is_ready(device_num)) {
+      DP("omp_target_alloc returns NULL ptr\n");
+      return NULL;
+    }
+    DeviceTy &Device = Devices[device_num];
+    int32_t device_id = -Device.RTLDeviceID - 1;
+    rc = Device.RTL->data_alloc(device_id, size, NULL);
+    LLD_DP("omp_target_alloc returns uvm ptr " DPxMOD ", size=%ld\n", DPxPTR(rc), size);
+    Device.allocSize += size;
+    Device.devMemRatio = (double)total_dev_size / Device.allocSize;
+    return rc;
+  }
+
   if (!device_is_ready(device_num)) {
     DP("omp_target_alloc returns NULL ptr\n");
     return NULL;

@@ -17,6 +17,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// My debug print
+//#define LLD_DEBUG
+//#define LLD_VERBOSE
+
 #define OFFLOAD_SUCCESS (0)
 #define OFFLOAD_FAIL (~0)
 
@@ -218,8 +222,22 @@ void __kmpc_push_target_tripcount(int64_t device_id, uint64_t loop_tripcount);
  *                               // 16 digits for 64bit
  *   (uintptr_t) ptr);
  */
+
+#ifdef LLD_DEBUG
+#define LLD_DP(...)                                                    \
+  {                                                                            \
+    fprintf(stderr, "My libomptarget --> ");                                   \
+    fprintf(stderr, __VA_ARGS__);                                              \
+  }
+#else
+#define LLD_DP(...)                                                    \
+  {}
+#endif
+
 #else
 #define DEBUGP(prefix, ...)                                                    \
+  {}
+#define LLD_DP(...)                                                    \
   {}
 #endif
 
