@@ -13,6 +13,7 @@
 
 #include <omptarget.h>
 
+#include "replacement.h"
 #include "device.h"
 #include "private.h"
 #include "rtl.h"

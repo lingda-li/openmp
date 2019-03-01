@@ -18,7 +18,7 @@
 #include <stddef.h>
 
 // My debug print
-//#define LLD_DEBUG
+#define LLD_DEBUG
 //#define LLD_VERBOSE
 
 #define OFFLOAD_SUCCESS (0)
@@ -51,6 +51,22 @@ enum tgt_map_type {
   OMP_TGT_MAPTYPE_LITERAL         = 0x100,
   // mapping is implicit
   OMP_TGT_MAPTYPE_IMPLICIT        = 0x200,
+  // uvm map
+  OMP_TGT_MAPTYPE_UVM             = 0x400,
+  // host map
+  OMP_TGT_MAPTYPE_HOST            = 0x800,
+  // ranking number
+  OMP_TGT_MAPTYPE_RANK            = 0xff000,
+  // local reuse
+  OMP_TGT_MAPTYPE_LOCAL_REUSE     = 0xfff00000,
+  // hybrid map
+  OMP_TGT_MAPTYPE_HYB             = 0x100000000,
+  // soft device map
+  OMP_TGT_MAPTYPE_SDEV            = 0x200000000,
+  // partial map
+  OMP_TGT_MAPTYPE_PART            = 0x400000000,
+  // reuse distance
+  OMP_TGT_MAPTYPE_DIST            = 0x3f0000000000,
   // member of struct, member given by [16 MSBs] - 1
   OMP_TGT_MAPTYPE_MEMBER_OF       = 0xffff000000000000
 };

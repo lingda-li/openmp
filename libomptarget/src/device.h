@@ -20,17 +20,6 @@
 #include <mutex>
 #include <vector>
 
-// GPU memory mode
-extern int GMode;
-// Whether to recycle GPU memory
-extern int RecycleMem;
-// Whether to enable partial mapping
-extern bool PartialMap;
-// Available device memory size
-extern int64_t total_dev_size;
-// Global time stamp
-extern uint64_t GlobalTimeStamp;
-
 // Forward declarations.
 struct RTLInfoTy;
 struct __tgt_bin_desc;
@@ -46,6 +35,23 @@ struct HostDataToTargetTy {
   uintptr_t HstPtrEnd; // non-inclusive.
 
   uintptr_t TgtPtrBegin; // target info.
+
+  // Whether data mapping is decided
+  bool Decided = true;
+  int64_t MapType = 0;
+  // Replacement info
+  double Locality = 0.0;
+  int64_t Reuse = 0;
+  uint64_t TimeStamp = 0;
+  bool IsValid = true;
+  bool IsDeleted = false;
+  bool Irreplaceable = false;
+  bool ChangeMap = false;
+  uint64_t ReuseDist = 0;
+  // Cluster info
+  std::list<DataClusterTy*> Clusters;
+  // for partial map
+  int64_t DevSize = 0;
 
   long RefCount;
 
@@ -68,6 +74,10 @@ struct LookupResult {
     unsigned IsContained   : 1;
     unsigned ExtendsBefore : 1;
     unsigned ExtendsAfter  : 1;
+    // for invalid entry
+    unsigned InvalidContained       : 1;
+    unsigned InvalidExtendsB        : 1;
+    unsigned InvalidExtendsA        : 1;
   } Flags;
 
   HostDataToTargetListTy::iterator Entry;
@@ -101,7 +111,13 @@ struct DeviceTy {
   bool HasPendingGlobals;
 
   HostDataToTargetListTy HostDataToTargetMap;
+  // invalid data list
+  HostDataToTargetListTy InvalidTargetDataList;
   PendingCtorsDtorsPerLibrary PendingCtorsDtors;
+  // for clusters
+  DataClusterListTy DataClusters;
+  DataClusterTy *CurrentCluster;
+  bool IsNewCluster;
 
   ShadowPtrListTy ShadowPtrMap;
 
@@ -117,6 +133,7 @@ struct DeviceTy {
   DeviceTy(RTLInfoTy *RTL)
       : DeviceID(-1), RTL(RTL), RTLDeviceID(-1), IsInit(false), InitFlag(),
         HasPendingGlobals(false), HostDataToTargetMap(),
+        InvalidTargetDataList(),
         PendingCtorsDtors(), ShadowPtrMap(), DataMapMtx(), PendingGlobalsMtx(),
         ShadowMtx(), loopTripCnt(0) {}
 
@@ -126,6 +143,7 @@ struct DeviceTy {
       : DeviceID(d.DeviceID), RTL(d.RTL), RTLDeviceID(d.RTLDeviceID),
         IsInit(d.IsInit), InitFlag(), HasPendingGlobals(d.HasPendingGlobals),
         HostDataToTargetMap(d.HostDataToTargetMap),
+        InvalidTargetDataList(d.InvalidTargetDataList),
         PendingCtorsDtors(d.PendingCtorsDtors), ShadowPtrMap(d.ShadowPtrMap),
         DataMapMtx(), PendingGlobalsMtx(),
         ShadowMtx(), loopTripCnt(d.loopTripCnt) {}
@@ -137,6 +155,7 @@ struct DeviceTy {
     IsInit = d.IsInit;
     HasPendingGlobals = d.HasPendingGlobals;
     HostDataToTargetMap = d.HostDataToTargetMap;
+    InvalidTargetDataList= d.InvalidTargetDataList;
     PendingCtorsDtors = d.PendingCtorsDtors;
     ShadowPtrMap = d.ShadowPtrMap;
     loopTripCnt = d.loopTripCnt;
@@ -147,13 +166,17 @@ struct DeviceTy {
   long getMapEntryRefCnt(void *HstPtrBegin);
   LookupResult lookupMapping(void *HstPtrBegin, int64_t Size);
   void *getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
-      bool &IsNew, bool IsImplicit, bool UpdateRefCount = true);
+      bool &IsNew, bool IsImplicit, bool UpdateRefCount = true,
+      int64_t MapType = 0);
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size);
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size, bool &IsLast,
       bool UpdateRefCount);
   int deallocTgtPtr(void *TgtPtrBegin, int64_t Size, bool ForceDelete);
   int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
   int disassociatePtr(void *HstPtrBegin);
+
+  // for cluster
+  DataClusterTy *lookupCluster(void *Base);
 
   // calls to RTL
   int32_t initOnce();

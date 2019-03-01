@@ -28,6 +28,7 @@ struct RTLInfoTy {
   typedef int32_t(number_of_devices_ty)();
   typedef int32_t(init_device_ty)(int32_t);
   typedef __tgt_target_table *(load_binary_ty)(int32_t, void *);
+  typedef void (data_opt_ty)(int32_t, int64_t, void *, int32_t);
   typedef void *(data_alloc_ty)(int32_t, int64_t, void *);
   typedef int32_t(data_submit_ty)(int32_t, void *, void *, int64_t);
   typedef int32_t(data_retrieve_ty)(int32_t, void *, void *, int64_t);
@@ -54,6 +55,7 @@ struct RTLInfoTy {
   number_of_devices_ty *number_of_devices;
   init_device_ty *init_device;
   load_binary_ty *load_binary;
+  data_opt_ty *data_opt;
   data_alloc_ty *data_alloc;
   data_submit_ty *data_submit;
   data_retrieve_ty *data_retrieve;
@@ -77,7 +79,7 @@ struct RTLInfoTy {
         RTLName(),
 #endif
         is_valid_binary(0), number_of_devices(0), init_device(0),
-        load_binary(0), data_alloc(0), data_submit(0), data_retrieve(0),
+        load_binary(0), data_opt(0), data_alloc(0), data_submit(0), data_retrieve(0),
         data_delete(0), run_region(0), run_team_region(0), isUsed(false),
         Mtx() {}
 
@@ -92,6 +94,7 @@ struct RTLInfoTy {
     number_of_devices = r.number_of_devices;
     init_device = r.init_device;
     load_binary = r.load_binary;
+    data_opt = r.data_opt;
     data_alloc = r.data_alloc;
     data_submit = r.data_submit;
     data_retrieve = r.data_retrieve;

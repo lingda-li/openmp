@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "replacement.h"
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
@@ -50,6 +51,47 @@ void RTLsTy::LoadRTLs() {
     return;
   }
 
+  // Parse environment variables for custom data management
+  char *envStr = getenv("LLD_GPU_MODE");
+  if (envStr) {
+    if (!strcmp(envStr, "OBJ")) {
+      GMode = -1;
+      LLD_DP("Set mode to GLOBAL\n");
+    } else if (!strcmp(envStr, "LOCAL")) {
+      GMode = -2;
+      LLD_DP("Set mode to LOCAL\n");
+    } else if (!strcmp(envStr, "RD")) {
+      GMode = -3;
+      LLD_DP("Set mode to RD\n");
+    } else if (!strcmp(envStr, "UM")) {
+      GMode = 1;
+      LLD_DP("Set mode to UM\n");
+    } else if (!strcmp(envStr, "DEV")) {
+      GMode = 2;
+      LLD_DP("Set mode to DEV\n");
+    } else if (!strcmp(envStr, "HOST")) {
+      GMode = 3;
+      LLD_DP("Set mode to HOST\n");
+    } else if (!strcmp(envStr, "HYB")) {
+      GMode = 4;
+      LLD_DP("Set mode to HYB\n");
+    } else if (!strcmp(envStr, "SDEV")) {
+      GMode = 5;
+      LLD_DP("Set mode to SDEV\n");
+    } else
+      LLD_DP("Default mode is CLUSTER\n");
+  }
+  envStr = getenv("LLD_RECYCLE");
+  if (envStr) {
+    RecycleMem = std::stoi(envStr);
+    LLD_DP("Set RecycleMem to %d\n", RecycleMem);
+  }
+  envStr = getenv("LLD_PARTIAL_MAP");
+  if (envStr) {
+    PartialMap = (std::stoi(envStr) != 0 ? true : false);
+    LLD_DP("Set PartialMap to %d\n", PartialMap);
+  }
+
   DP("Loading RTLs...\n");
 
   // Attempt to open all the plugins and, if they exist, check if the interface
@@ -87,6 +129,10 @@ void RTLsTy::LoadRTLs() {
       continue;
     if (!(*((void**) &R.load_binary) = dlsym(
               dynlib_handle, "__tgt_rtl_load_binary")))
+      continue;
+    // Data optimization interface
+    if (!(*((void**) &R.data_opt) = dlsym(
+              dynlib_handle, "__tgt_rtl_data_opt")))
       continue;
     if (!(*((void**) &R.data_alloc) = dlsym(
               dynlib_handle, "__tgt_rtl_data_alloc")))

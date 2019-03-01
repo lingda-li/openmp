@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "replacement.h"
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
@@ -26,6 +27,8 @@ int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size) {
 
   // Check if entry exists
   for (auto &HT : HostDataToTargetMap) {
+    // check validation
+    if (!HT.IsValid) continue;
     if ((uintptr_t)HstPtrBegin == HT.HstPtrBegin) {
       // Mapping already exists
       bool isValid = HT.HstPtrBegin == (uintptr_t) HstPtrBegin &&
@@ -72,6 +75,8 @@ int DeviceTy::disassociatePtr(void *HstPtrBegin) {
   // Check if entry exists
   for (HostDataToTargetListTy::iterator ii = HostDataToTargetMap.begin();
       ii != HostDataToTargetMap.end(); ++ii) {
+    // check validation
+    if (!ii->IsValid) continue;
     if ((uintptr_t)HstPtrBegin == ii->HstPtrBegin) {
       // Mapping exists
       if (CONSIDERED_INF(ii->RefCount)) {
@@ -100,6 +105,8 @@ long DeviceTy::getMapEntryRefCnt(void *HstPtrBegin) {
 
   DataMapMtx.lock();
   for (auto &HT : HostDataToTargetMap) {
+    // check validation
+    if (!HT.IsValid) continue;
     if (hp >= HT.HstPtrBegin && hp < HT.HstPtrEnd) {
       DP("DeviceTy::getMapEntry: requested entry found\n");
       RefCnt = HT.RefCount;
@@ -134,6 +141,15 @@ LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, int64_t Size) {
 
     if (lr.Flags.IsContained || lr.Flags.ExtendsBefore ||
         lr.Flags.ExtendsAfter) {
+      // Check validation
+      if (!HT.IsValid) {
+        lr.Flags.InvalidContained = lr.Flags.IsContained;
+        lr.Flags.InvalidExtendsB = lr.Flags.ExtendsBefore;
+        lr.Flags.InvalidExtendsA = lr.Flags.ExtendsAfter;
+        lr.Flags.IsContained = 0;
+        lr.Flags.ExtendsBefore = 0;
+        lr.Flags.ExtendsAfter = 0;
+      }
       break;
     }
   }
@@ -157,7 +173,8 @@ LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, int64_t Size) {
 // If NULL is returned, then either data allocation failed or the user tried
 // to do an illegal mapping.
 void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
-    int64_t Size, bool &IsNew, bool IsImplicit, bool UpdateRefCount) {
+    int64_t Size, bool &IsNew, bool IsImplicit, bool UpdateRefCount,
+    int64_t MapType) {
   void *rc = NULL;
   DataMapMtx.lock();
   LookupResult lr = lookupMapping(HstPtrBegin, Size);
@@ -256,11 +273,23 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
       assert(HT.RefCount == 0 && "did not expect a negative ref count");
       DP("Deleting tgt data " DPxMOD " of size %ld\n",
           DPxPTR(HT.TgtPtrBegin), Size);
-      RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
-      DP("Removing%s mapping with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD
-          ", Size=%ld\n", (ForceDelete ? " (forced)" : ""),
-          DPxPTR(HT.HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
-      HostDataToTargetMap.erase(lr.Entry);
+      // for unified memory
+      if (RecycleMem == 0) {
+        if (HT.TgtPtrBegin != HT.HstPtrBegin) {
+          deviceSize -= Size;
+          RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
+          LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n",
+                 DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+        }
+        DP("Removing%s mapping with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD
+           ", Size=%ld\n",
+           (ForceDelete ? " (forced)" : ""), DPxPTR(HT.HstPtrBegin),
+           DPxPTR(HT.TgtPtrBegin), Size);
+        HostDataToTargetMap.erase(lr.Entry);
+      } else {
+        HT.IsValid = false;
+        // InvalidTargetDataList.push_front(*lr.Entry);
+      }
     }
     rc = OFFLOAD_SUCCESS;
   } else {
@@ -279,6 +308,10 @@ void DeviceTy::init() {
   if (rc == OFFLOAD_SUCCESS) {
     IsInit = true;
   }
+  // for memory management
+  deviceSize = 0;
+  umSize = 0;
+  allocSize = 0;
 }
 
 /// Thread-safe method to initialize the device only once.
@@ -308,12 +341,16 @@ __tgt_target_table *DeviceTy::load_binary(void *Img) {
 // Submit data to device.
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
+  LLD_DP("  Submit " DPxMOD " to " DPxMOD ", size=%ld\n", DPxPTR(HstPtrBegin),
+         DPxPTR(TgtPtrBegin), Size);
   return RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
 }
 
 // Retrieve data from device.
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
+  LLD_DP("  Retrieve " DPxMOD " from " DPxMOD ", size=%ld\n",
+         DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin), Size);
   return RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
 }
 

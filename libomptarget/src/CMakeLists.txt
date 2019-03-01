@@ -17,6 +17,7 @@ set(src_files
   device.cpp
   interface.cpp
   rtl.cpp
+  replacement.cpp
   omptarget.cpp
 )
 
