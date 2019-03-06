@@ -131,6 +131,11 @@ void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
                                     int32_t depNum, void *depList,
                                     int32_t noAliasDepNum,
                                     void *noAliasDepList);
+// version with user-defined mapper attached
+void __tgt_target_data_begin_mapper(int64_t device_id, int32_t arg_num,
+                                    void **args_base, void **args,
+                                    int64_t *arg_sizes, int64_t *arg_types,
+                                    void **arg_mapper_ptrs);
 
 // passes data from the target, release target memory and destroys the
 // host-target mapping (top entry from the stack of data maps) created by
@@ -153,6 +158,15 @@ void __tgt_target_data_update_nowait(int64_t device_id, int32_t arg_num,
                                      int32_t depNum, void *depList,
                                      int32_t noAliasDepNum,
                                      void *noAliasDepList);
+
+// Performs data mapping within user-defined mapper function.
+void __tgt_target_data_mapper(int64_t device_id, int32_t arg_num,
+                              void **args_base, void **args, int64_t *arg_sizes,
+                              int64_t *arg_types, void **arg_mapper_ptrs);
+void __tgt_target_data_mapper_nowait(int64_t device_id, int32_t arg_num,
+                                     void **args_base, void **args,
+                                     int64_t *arg_sizes, int64_t *arg_types,
+                                     void **arg_mapper_ptrs);
 
 // Performs the same actions as data_begin in case arg_num is non-zero
 // and initiates run of offloaded region on target platform; if arg_num

@@ -18,13 +18,20 @@
 #include <cstdint>
 
 extern int target_data_begin(DeviceTy &Device, int32_t arg_num,
-    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types);
+                             void **args_base, void **args, int64_t *arg_sizes,
+                             int64_t *arg_types, void **arg_mapper_ptrs);
 
 extern int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
     void **args, int64_t *arg_sizes, int64_t *arg_types);
 
 extern int target_data_update(DeviceTy &Device, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types);
+
+// Combines the functionality of target_data_begin, target_data_end, and
+// target_data_update
+extern int target_data(DeviceTy &Device, int32_t arg_num, void **args_base,
+                       void **args, int64_t *arg_sizes, int64_t *arg_types,
+                       void **arg_mapper_ptrs);
 
 extern int target(int64_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
