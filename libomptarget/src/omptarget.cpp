@@ -557,6 +557,18 @@ int target_data(DeviceTy &Device, int32_t arg_num, void **args_base,
     void *HstPtrBase = args_base[i];
     int64_t data_size = arg_sizes[i];
 
+    if (arg_mapper_ptrs && arg_mapper_ptrs[i]) {
+      int (*mapper_func_ptr)(int64_t, void *, void *, int64_t, int64_t);
+      mapper_func_ptr = (int (*)(int64_t, void *, void *, int64_t, int64_t))(
+          arg_mapper_ptrs[i]);
+      int rt = (*mapper_func_ptr)(Device.DeviceID, HstPtrBase, HstPtrBegin,
+                                  data_size, arg_types[i]);
+      if (rt != OFFLOAD_SUCCESS) {
+        DP("User-defined mapper function failed.\n");
+        return OFFLOAD_FAIL;
+      }
+    }
+
     // Adjust for proper alignment if this is a combined entry (for structs).
     // Look at the next argument - if that is MEMBER_OF this one, then this one
     // is a combined entry.
