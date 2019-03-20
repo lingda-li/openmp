@@ -763,6 +763,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
     HstPtrBegin = (void*)HT.HstPtrBegin;
     Size = HT.HstPtrEnd - HT.HstPtrBegin;
     uintptr_t tp;
+    mem_map_type PreMap = getMemMapType(HT.MapType);
     if (UVM && PinHost) { // delay decision
       tp = (uintptr_t)HstPtrBegin;
       HT.Decided = false;
@@ -772,6 +773,18 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
         deviceSize -= Size;
         RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
         LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_UVM) {
+        umSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from UM (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_SDEV) {
+        deviceSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_PART) {
+        deviceSize -= HT.DevSize;
+        LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
       }
       LLD_DP("  Remap " DPxMOD " to UM, size=%ld\n", DPxPTR(HstPtrBegin), Size);
       tp = (uintptr_t)HstPtrBegin;
@@ -782,6 +795,18 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
         deviceSize -= Size;
         RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
         LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_UVM) {
+        umSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from UM (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_SDEV) {
+        deviceSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_PART) {
+        deviceSize -= HT.DevSize;
+        LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
       }
       LLD_DP("  Remap " DPxMOD " to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
       tp = (uintptr_t)HstPtrBegin;
@@ -793,6 +818,18 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
         deviceSize -= Size;
         RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
         LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_UVM) {
+        umSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from UM (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_SDEV) {
+        deviceSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_PART) {
+        deviceSize -= HT.DevSize;
+        LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
       }
       LLD_DP("  Remap " DPxMOD " to part, size=%ld (%ld)\n", DPxPTR(HstPtrBegin), Size, PartDevSize);
       tp = (uintptr_t)HstPtrBegin;
@@ -805,6 +842,18 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
         deviceSize -= Size;
         RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
         LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_UVM) {
+        umSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from UM (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_SDEV) {
+        deviceSize -= Size;
+        LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+      } else if (PreMap == MEM_MAPTYPE_PART) {
+        deviceSize -= HT.DevSize;
+        LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
+               DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
       }
       tp = (uintptr_t)HstPtrBegin;
       RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 0);
