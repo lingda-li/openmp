@@ -24,26 +24,6 @@ uint64_t GlobalTimeStamp = 0;
 // Partial mapped size
 int64_t PartDevSize;
 
-// get map type
-inline mem_map_type getMemMapType(int64_t MapType) {
-  bool IsUVM = MapType & OMP_TGT_MAPTYPE_UVM;
-  bool IsHost = MapType & OMP_TGT_MAPTYPE_HOST;
-  bool SoftDev = MapType & OMP_TGT_MAPTYPE_SDEV;
-  bool Partial = MapType & OMP_TGT_MAPTYPE_PART;
-  if (IsUVM & IsHost)
-    return MEM_MAPTYPE_UNDECIDE;
-  else if (IsUVM)
-    return MEM_MAPTYPE_UVM;
-  else if (IsHost)
-    return MEM_MAPTYPE_HOST;
-  else if (SoftDev)
-    return MEM_MAPTYPE_SDEV;
-  else if (Partial)
-    return MEM_MAPTYPE_PART;
-  else
-    return MEM_MAPTYPE_DEV;
-}
-
 inline void setMemMapType(int64_t &MapType, mem_map_type Type) {
   MapType &= ~(OMP_TGT_MAPTYPE_UVM | OMP_TGT_MAPTYPE_HOST |
                OMP_TGT_MAPTYPE_SDEV | OMP_TGT_MAPTYPE_PART);
@@ -1010,8 +990,10 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
     int32_t idx = I.first;
     int64_t DataSize = arg_sizes[idx];
     LookupResult lr = Device.lookupMapping(args_base[idx], DataSize);
-    if ((lr.Flags.IsContained || lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) ||
-        (lr.Flags.InvalidContained || lr.Flags.InvalidExtendsB || lr.Flags.InvalidExtendsA))
+    if ((lr.Flags.IsContained || lr.Flags.ExtendsBefore ||
+         lr.Flags.ExtendsAfter) ||
+        (lr.Flags.InvalidContained || lr.Flags.InvalidExtendsB ||
+         lr.Flags.InvalidExtendsA))
       DataSize = lr.Entry->HstPtrEnd - lr.Entry->HstPtrBegin;
     new_arg_sizes[idx] = DataSize;
     if (lr.Entry != Device.HostDataToTargetMap.end() &&

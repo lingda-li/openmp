@@ -68,6 +68,10 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
     Device.devMemRatio = (double)total_dev_size / Device.allocSize;
     return rc;
   }
+  if (device_num == -200) {
+    LLD_DP("omp_target_alloc marks uvm ptr " DPxMOD "\n", DPxPTR((void *)size));
+    return (void *)size;
+  }
 
   if (!device_is_ready(device_num)) {
     DP("omp_target_alloc returns NULL ptr\n");

@@ -5,6 +5,7 @@
 
 #include <list>
 #include <cstdint>
+#include <omptarget.h>
 
 // GPU memory mode
 extern int GMode;
@@ -48,6 +49,26 @@ enum mem_map_type {
   MEM_MAPTYPE_HOST,
   MEM_MAPTYPE_UNDECIDE
 };
+
+// get map type
+inline mem_map_type getMemMapType(int64_t MapType) {
+  bool IsUVM = MapType & OMP_TGT_MAPTYPE_UVM;
+  bool IsHost = MapType & OMP_TGT_MAPTYPE_HOST;
+  bool SoftDev = MapType & OMP_TGT_MAPTYPE_SDEV;
+  bool Partial = MapType & OMP_TGT_MAPTYPE_PART;
+  if (IsUVM & IsHost)
+    return MEM_MAPTYPE_UNDECIDE;
+  else if (IsUVM)
+    return MEM_MAPTYPE_UVM;
+  else if (IsHost)
+    return MEM_MAPTYPE_HOST;
+  else if (SoftDev)
+    return MEM_MAPTYPE_SDEV;
+  else if (Partial)
+    return MEM_MAPTYPE_PART;
+  else
+    return MEM_MAPTYPE_DEV;
+}
 
 std::pair<int64_t *, int64_t *>
 target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,

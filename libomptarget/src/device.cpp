@@ -166,56 +166,54 @@ LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, int64_t Size) {
   return lr;
 }
 
-/*
-// Used by target_data_begin
-// Return the target pointer begin (where the data will be moved).
-// Allocate memory if this is the first occurrence if this mapping.
-// Increment the reference counter.
-// If NULL is returned, then either data allocation failed or the user tried
-// to do an illegal mapping.
-void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
-    int64_t Size, bool &IsNew, bool IsImplicit, bool UpdateRefCount,
-    int64_t MapType) {
-  void *rc = NULL;
-  DataMapMtx.lock();
-  LookupResult lr = lookupMapping(HstPtrBegin, Size);
-
-  // Check if the pointer is contained.
-  if (lr.Flags.IsContained ||
-      ((lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) && IsImplicit)) {
-    auto &HT = *lr.Entry;
-    IsNew = false;
-
-    if (UpdateRefCount)
-      ++HT.RefCount;
-
-    uintptr_t tp = HT.TgtPtrBegin + ((uintptr_t)HstPtrBegin - HT.HstPtrBegin);
-    DP("Mapping exists%s with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD ", "
-        "Size=%ld,%s RefCount=%s\n", (IsImplicit ? " (implicit)" : ""),
-        DPxPTR(HstPtrBegin), DPxPTR(tp), Size,
-        (UpdateRefCount ? " updated" : ""),
-        (CONSIDERED_INF(HT.RefCount)) ? "INF" :
-            std::to_string(HT.RefCount).c_str());
-    rc = (void *)tp;
-  } else if ((lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) && !IsImplicit) {
-    // Explicit extension of mapped data - not allowed.
-    DP("Explicit extension of mapping is not allowed.\n");
-  } else if (Size) {
-    // If it is not contained and Size > 0 we should create a new entry for it.
-    IsNew = true;
-    uintptr_t tp = (uintptr_t)RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
-    DP("Creating new map entry: HstBase=" DPxMOD ", HstBegin=" DPxMOD ", "
-        "HstEnd=" DPxMOD ", TgtBegin=" DPxMOD "\n", DPxPTR(HstPtrBase),
-        DPxPTR(HstPtrBegin), DPxPTR((uintptr_t)HstPtrBegin + Size), DPxPTR(tp));
-    HostDataToTargetMap.push_front(HostDataToTargetTy((uintptr_t)HstPtrBase,
-        (uintptr_t)HstPtrBegin, (uintptr_t)HstPtrBegin + Size, tp));
-    rc = (void *)tp;
-  }
-
-  DataMapMtx.unlock();
-  return rc;
-}
-*/
+//// Used by target_data_begin
+//// Return the target pointer begin (where the data will be moved).
+//// Allocate memory if this is the first occurrence if this mapping.
+//// Increment the reference counter.
+//// If NULL is returned, then either data allocation failed or the user tried
+//// to do an illegal mapping.
+//void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
+//    int64_t Size, bool &IsNew, bool IsImplicit, bool UpdateRefCount,
+//    int64_t MapType) {
+//  void *rc = NULL;
+//  DataMapMtx.lock();
+//  LookupResult lr = lookupMapping(HstPtrBegin, Size);
+//
+//  // Check if the pointer is contained.
+//  if (lr.Flags.IsContained ||
+//      ((lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) && IsImplicit)) {
+//    auto &HT = *lr.Entry;
+//    IsNew = false;
+//
+//    if (UpdateRefCount)
+//      ++HT.RefCount;
+//
+//    uintptr_t tp = HT.TgtPtrBegin + ((uintptr_t)HstPtrBegin - HT.HstPtrBegin);
+//    DP("Mapping exists%s with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD ", "
+//        "Size=%ld,%s RefCount=%s\n", (IsImplicit ? " (implicit)" : ""),
+//        DPxPTR(HstPtrBegin), DPxPTR(tp), Size,
+//        (UpdateRefCount ? " updated" : ""),
+//        (CONSIDERED_INF(HT.RefCount)) ? "INF" :
+//            std::to_string(HT.RefCount).c_str());
+//    rc = (void *)tp;
+//  } else if ((lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) && !IsImplicit) {
+//    // Explicit extension of mapped data - not allowed.
+//    DP("Explicit extension of mapping is not allowed.\n");
+//  } else if (Size) {
+//    // If it is not contained and Size > 0 we should create a new entry for it.
+//    IsNew = true;
+//    uintptr_t tp = (uintptr_t)RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
+//    DP("Creating new map entry: HstBase=" DPxMOD ", HstBegin=" DPxMOD ", "
+//        "HstEnd=" DPxMOD ", TgtBegin=" DPxMOD "\n", DPxPTR(HstPtrBase),
+//        DPxPTR(HstPtrBegin), DPxPTR((uintptr_t)HstPtrBegin + Size), DPxPTR(tp));
+//    HostDataToTargetMap.push_front(HostDataToTargetTy((uintptr_t)HstPtrBase,
+//        (uintptr_t)HstPtrBegin, (uintptr_t)HstPtrBegin + Size, tp));
+//    rc = (void *)tp;
+//  }
+//
+//  DataMapMtx.unlock();
+//  return rc;
+//}
 
 // Used by target_data_begin, target_data_end, target_data_update and target.
 // Return the target pointer begin (where the data will be moved).
@@ -282,6 +280,23 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
           RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
           LLD_DP("  Unmap " DPxMOD " from device (" DPxMOD "), size=%ld\n",
                  DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+        } else {
+          mem_map_type PreMap = getMemMapType(HT.MapType);
+          assert(PreMap != MEM_MAPTYPE_UNDECIDE);
+          if (PreMap == MEM_MAPTYPE_UVM) {
+            umSize -= Size;
+            LLD_DP("  Unmap " DPxMOD " from UM (" DPxMOD "), size=%ld\n",
+                   DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+          } else if (PreMap == MEM_MAPTYPE_SDEV) {
+            deviceSize -= Size;
+            LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD
+                   "), size=%ld\n",
+                   DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+          } else if (PreMap == MEM_MAPTYPE_PART) {
+            deviceSize -= HT.DevSize;
+            LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
+                   DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+          }
         }
         DP("Removing%s mapping with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD
            ", Size=%ld\n",
