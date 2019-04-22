@@ -12,16 +12,6 @@ VERS1.0 {
     __tgt_target_data_update_nowait;
     __tgt_target_nowait;
     __tgt_target_teams_nowait;
-    __tgt_target_data_begin_mapper;
-    __tgt_target_data_end_mapper;
-    __tgt_target_data_update_mapper;
-    __tgt_target_mapper;
-    __tgt_target_teams_mapper;
-    __tgt_target_data_begin_mapper_nowait;
-    __tgt_target_data_end_mapper_nowait;
-    __tgt_target_data_update_mapper_nowait;
-    __tgt_target_mapper_nowait;
-    __tgt_target_teams_mapper_nowait;
     __tgt_target_data_mapper;
     __tgt_target_data_mapper_nowait;
     omp_get_num_devices;

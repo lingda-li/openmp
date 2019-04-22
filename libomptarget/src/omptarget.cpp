@@ -210,9 +210,8 @@ static int32_t member_of(int64_t type) {
 }
 
 /// Internal function to do the mapping and transfer the data to the device
-int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
-                      void **args, int64_t *arg_sizes, int64_t *arg_types,
-                      void **arg_mapper_ptrs) {
+int target_data_begin(DeviceTy &Device, int32_t arg_num,
+    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types) {
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
     // Ignore private variables and arrays - there is no mapping for them.
@@ -846,7 +845,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num,
 
   // Move data to device.
   int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
-                             arg_types, NULL);
+      arg_types);
   if (rc != OFFLOAD_SUCCESS) {
     DP("Call to target_data_begin failed, abort target.\n");
     return OFFLOAD_FAIL;

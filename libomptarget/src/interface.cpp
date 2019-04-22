@@ -112,8 +112,8 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
   }
 #endif
 
-  int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
-                             arg_types, NULL);
+  int rc = target_data_begin(Device, arg_num, args_base,
+      args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 }
 
@@ -126,43 +126,6 @@ EXTERN void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
 
   __tgt_target_data_begin(device_id, arg_num, args_base, args, arg_sizes,
                           arg_types);
-}
-
-EXTERN void __tgt_target_data_begin_mapper(int64_t device_id, int32_t arg_num,
-                                           void **args_base, void **args,
-                                           int64_t *arg_sizes,
-                                           int64_t *arg_types,
-                                           void **arg_mapper_ptrs) {
-  if (IsOffloadDisabled()) return;
-
-  DP("Entering data begin region for device %" PRId64 " with %d mappings\n",
-      device_id, arg_num);
-
-  // No devices available?
-  if (device_id == OFFLOAD_DEVICE_DEFAULT) {
-    device_id = omp_get_default_device();
-    DP("Use default device id %" PRId64 "\n", device_id);
-  }
-
-  if (CheckDeviceAndCtors(device_id) != OFFLOAD_SUCCESS) {
-    DP("Failed to get device %" PRId64 " ready\n", device_id);
-    HandleTargetOutcome(false);
-    return;
-  }
-
-  DeviceTy& Device = Devices[device_id];
-
-#ifdef OMPTARGET_DEBUG
-  for (int i=0; i<arg_num; ++i) {
-    DP("Entry %2d: Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
-        ", Type=0x%" PRIx64 "\n", i, DPxPTR(args_base[i]), DPxPTR(args[i]),
-        arg_sizes[i], arg_types[i]);
-  }
-#endif
-
-  int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
-                             arg_types, arg_mapper_ptrs);
-  HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 }
 
 /// passes data from the target, releases target memory and destroys
