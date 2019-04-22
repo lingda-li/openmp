@@ -287,6 +287,18 @@ EXTERN void __tgt_target_data_mapper(int64_t device_id, int32_t arg_num,
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 }
 
+EXTERN void __tgt_target_data_mapper_nowait(
+    int64_t device_id, int32_t arg_num, void **args_base, void **args,
+    int64_t *arg_sizes, int64_t *arg_types, void **arg_mapper_ptrs,
+    int32_t depNum, void *depList, int32_t noAliasDepNum,
+    void *noAliasDepList) {
+  if (depNum + noAliasDepNum > 0)
+    __kmpc_omp_taskwait(NULL, 0);
+
+  __tgt_target_data_mapper(device_id, arg_num, args_base, args, arg_sizes,
+                           arg_types, arg_mapper_ptrs);
+}
+
 EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types) {
   if (IsOffloadDisabled()) return OFFLOAD_FAIL;

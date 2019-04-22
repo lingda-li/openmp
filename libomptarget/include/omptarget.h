@@ -166,7 +166,9 @@ void __tgt_target_data_mapper(int64_t device_id, int32_t arg_num,
 void __tgt_target_data_mapper_nowait(int64_t device_id, int32_t arg_num,
                                      void **args_base, void **args,
                                      int64_t *arg_sizes, int64_t *arg_types,
-                                     void **arg_mapper_ptrs);
+                                     void **arg_mapper_ptrs, int32_t depNum,
+                                     void *depList, int32_t noAliasDepNum,
+                                     void *noAliasDepList);
 
 // Performs the same actions as data_begin in case arg_num is non-zero
 // and initiates run of offloaded region on target platform; if arg_num

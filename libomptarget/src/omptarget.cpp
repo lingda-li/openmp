@@ -557,6 +557,8 @@ int target_data(DeviceTy &Device, int32_t arg_num, void **args_base,
     void *HstPtrBase = args_base[i];
     int64_t data_size = arg_sizes[i];
 
+    // If a valid mapper is attached, call the mapper function to complete the
+    // mapping of its members.
     if (arg_mapper_ptrs && arg_mapper_ptrs[i]) {
       int (*mapper_func_ptr)(int64_t, void *, void *, int64_t, int64_t);
       mapper_func_ptr = (int (*)(int64_t, void *, void *, int64_t, int64_t))(
