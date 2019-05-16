@@ -8,7 +8,6 @@
 #include <cassert>
 #include <algorithm>
 
-#define NO_ON_DEMAND
 //#define SEC_LOCAL
 
 // GPU memory mode
@@ -17,6 +16,8 @@ int GMode = 0;
 int RecycleMem = 0;
 // Whether to enable partial mapping
 bool PartialMap = false;
+// Whether to enable on demand fetching
+bool OnDemand = false;
 // Available device memory size
 int64_t total_dev_size = 14 * 1024 * 1024 * 1024L;
 // Global time stamp
@@ -90,22 +91,27 @@ void dumpTargetData(HostDataToTargetListTy *DataList) {
 int64_t placeDataObj(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx,
                      int64_t &MapType, int64_t Size, void *Base, uint64_t LTC,
                      bool data_region) {
+  if (GMode == -4) {
+    MapType |= OMP_TGT_MAPTYPE_SDEV;
+    return Size;
+  }
   if (data_region) {
     LLD_DP("  Arg %d (" DPxMOD ") mapping is not decided\n", idx, DPxPTR(Base));
     MapType |= OMP_TGT_MAPTYPE_UVM;
     MapType |= OMP_TGT_MAPTYPE_HOST;
   } else {
     unsigned LocalReuse = getLocalReuse(MapType);
-    double LocalReuseFloat = (double)LocalReuse / 8.0;
+    double LocalReuseFloat = (double)LocalReuse / 5.0;
     double Density = LocalReuseFloat * LTC / Size;
+    //if (OnDemand)
+    //  MapType |= OMP_TGT_MAPTYPE_UVM;
     if (Density < 0.5) {
       LLD_DP("  Arg %d (" DPxMOD ") is intended for UM (%f)\n", idx,
              DPxPTR(Base), Density);
-#ifdef NO_ON_DEMAND
-      MapType |= OMP_TGT_MAPTYPE_SDEV;
-#else
-      MapType |= OMP_TGT_MAPTYPE_UVM;
-#endif
+      if (OnDemand)
+        MapType |= OMP_TGT_MAPTYPE_UVM;
+      else
+        MapType |= OMP_TGT_MAPTYPE_SDEV;
     } else {
       LLD_DP("  Arg %d (" DPxMOD ") is intended for device (%f)\n", idx,
              DPxPTR(Base), Density);
@@ -311,6 +317,10 @@ int64_t replaceDataObjPart(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t 
 int64_t replaceDataObj(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx,
                        int64_t &MapType, int64_t Size, int64_t AvailSize,
                        void *Base, uint64_t LTC, bool data_region) {
+  if (GMode == -4) { // in no rank mode, do not replace
+    MapType |= OMP_TGT_MAPTYPE_UVM;
+    return 0;
+  }
   int64_t OriAvailSize = AvailSize;
   std::vector<HostDataToTargetTy*> ReplaceList;
   for (auto &HT : Device.HostDataToTargetMap) {
@@ -548,7 +558,8 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
       } else if (SoftDev) {
         LLD_DP("  Map " DPxMOD " to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
         HT.TgtPtrBegin = (uintptr_t)HstPtrBegin;
-        RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+        if (GMode != -4) // no rank mode
+          RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
         RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
         deviceSize += Size;
         HT.Decided = true;
@@ -614,24 +625,28 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
           LLD_DP("  Remap " DPxMOD " from device (" DPxMOD ") to soft device, size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
           RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
           HT.TgtPtrBegin = (uintptr_t)HstPtrBegin;
-          RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+          if (GMode != -4) // no rank mode
+            RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
           RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
         } else if (PreMap == MEM_MAPTYPE_UVM) {
           LLD_DP("  Remap " DPxMOD " from UM to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
-          RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+          if (GMode != -4) // no rank mode
+            RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
           RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
           umSize -= Size;
           deviceSize += Size;
         } else if (PreMap == MEM_MAPTYPE_HOST) {
           LLD_DP("  Remap " DPxMOD " from host to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
-          RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+          if (GMode != -4) // no rank mode
+            RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
           RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
           deviceSize += Size;
         } else if (PreMap == MEM_MAPTYPE_SDEV) {
           // do nothing
         } else if (PreMap == MEM_MAPTYPE_PART) {
           LLD_DP("  Remap " DPxMOD " from part to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
-          RTL->data_opt(RTLDeviceID, Size-HT.DevSize, (void*)((uintptr_t)HstPtrBegin+HT.DevSize), 4); // pin to device
+          if (GMode != -4) // no rank mode
+            RTL->data_opt(RTLDeviceID, Size-HT.DevSize, (void*)((uintptr_t)HstPtrBegin+HT.DevSize), 4); // pin to device
           RTL->data_opt(RTLDeviceID, Size-HT.DevSize, (void*)((uintptr_t)HstPtrBegin+HT.DevSize), 1); // prefetch
           deviceSize += Size-HT.DevSize;
         }
@@ -810,7 +825,8 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
       }
       LLD_DP("  Remap " DPxMOD " to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
       tp = (uintptr_t)HstPtrBegin;
-      RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+      if (GMode != -4) // no rank mode
+        RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
       RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
       deviceSize += Size;
     } else if (CurMap == MEM_MAPTYPE_PART) {
@@ -893,7 +909,8 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
     } else if (SoftDev) {
       LLD_DP("  Map " DPxMOD " to soft device, size=%ld\n", DPxPTR(HstPtrBegin), Size);
       tp = (uintptr_t)HstPtrBegin;
-      RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
+      if (GMode != -4) // no rank mode
+        RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 4); // pin to device
       RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 1); // prefetch
       deviceSize += Size;
     } else if (CurMap == MEM_MAPTYPE_PART) {
@@ -1063,9 +1080,10 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
     }
     LRs[idx] = lr;
   }
-  std::sort(argList.begin(), argList.end(),
-            std::bind(rankArgs, std::placeholders::_1, std::placeholders::_2,
-                      Device, new_arg_sizes));
+  if (GMode != -4) // do not rank in no rank mode
+    std::sort(argList.begin(), argList.end(),
+              std::bind(rankArgs, std::placeholders::_1, std::placeholders::_2,
+                        Device, new_arg_sizes));
 
   if (GMode == 0) { // cluster
     uint64_t CSize = 0;
@@ -1111,7 +1129,7 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
         new_arg_types[idx] |= OMP_TGT_MAPTYPE_HOST;
       }
     }
-  } else { // global, local, or reuse distance based
+  } else { // global, local, no rank, or reuse distance based
     // argument index for partial mapping
     int32_t partial_idx = -1;
     HostDataToTargetTy *partial_HT;
@@ -1125,10 +1143,10 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
       LookupResult lr = LRs[idx];
       HostDataToTargetTy *HT =
           (lr.Entry != Device.HostDataToTargetMap.end() ? &(*lr.Entry) : NULL);
-      if (HT && getMemMapType(HT->MapType) != MEM_MAPTYPE_PART)
-        HT->Irreplaceable = true;
       if (HT && HT->IsValid && (getMemMapType(HT->MapType) <= MEM_MAPTYPE_UVM))
         continue;
+      if (HT && HT->IsValid && getMemMapType(HT->MapType) != MEM_MAPTYPE_PART)
+        HT->Irreplaceable = true;
       int64_t AvailSize =
           total_dev_size - used_dev_size - Device.deviceSize - Device.umSize;
       assert(AvailSize > -1024); // reserve space for non UM variables

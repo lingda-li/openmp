@@ -13,6 +13,8 @@ extern int GMode;
 extern int RecycleMem;
 // Whether to enable partial mapping
 extern bool PartialMap;
+// Whether to enable on demand fetching
+extern bool OnDemand;
 // Available device memory size
 extern int64_t total_dev_size;
 // Global time stamp

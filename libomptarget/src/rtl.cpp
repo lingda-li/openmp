@@ -63,6 +63,12 @@ void RTLsTy::LoadRTLs() {
     } else if (!strcmp(envStr, "RD")) {
       GMode = -3;
       LLD_DP("Set mode to RD\n");
+    } else if (!strcmp(envStr, "NR")) {
+      GMode = -4;
+      LLD_DP("Set mode to NORANK\n");
+    } else if (!strcmp(envStr, "LRU")) {
+      GMode = -5;
+      LLD_DP("Set mode to LRU\n");
     } else if (!strcmp(envStr, "UM")) {
       GMode = 1;
       LLD_DP("Set mode to UM\n");
@@ -91,6 +97,11 @@ void RTLsTy::LoadRTLs() {
   if (envStr) {
     PartialMap = (std::stoi(envStr) != 0 ? true : false);
     LLD_DP("Set PartialMap to %d\n", PartialMap);
+  }
+  envStr = getenv("LLD_ENABLE_UM");
+  if (envStr) {
+    OnDemand = (std::stoi(envStr) != 0 ? true : false);
+    LLD_DP("Set OnDemand to %d\n", OnDemand);
   }
 
   DP("Loading RTLs...\n");

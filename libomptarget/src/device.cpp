@@ -292,6 +292,8 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
             LLD_DP("  Unmap " DPxMOD " from soft device (" DPxMOD
                    "), size=%ld\n",
                    DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
+            if (GMode == -4) // no rank mode fetches data back to host
+              RTL->data_opt(RTLDeviceID, Size, HstPtrBegin, 5);
           } else if (PreMap == MEM_MAPTYPE_PART) {
             deviceSize -= HT.DevSize;
             LLD_DP("  Unmap " DPxMOD " from part (" DPxMOD "), size=%ld\n",
@@ -304,7 +306,12 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
            DPxPTR(HT.TgtPtrBegin), Size);
         HostDataToTargetMap.erase(lr.Entry);
       } else {
-        HT.IsValid = false;
+        if (GMode != -3)
+          HT.IsValid = false;
+        else {
+          if (HT.TgtPtrBegin != HT.HstPtrBegin)
+            HT.IsValid = false;
+        }
         // InvalidTargetDataList.push_front(*lr.Entry);
       }
     }
