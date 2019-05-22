@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cuda.h>
 
 //#define SEC_LOCAL
 
@@ -18,6 +19,8 @@ int RecycleMem = 0;
 bool PartialMap = false;
 // Whether to enable on demand fetching
 bool OnDemand = false;
+// The threshold that decides whether to use on demand fetching
+float DensityTH = 0.5;
 // Available device memory size
 int64_t total_dev_size = 14 * 1024 * 1024 * 1024L;
 // Global time stamp
@@ -100,12 +103,22 @@ int64_t placeDataObj(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx,
     MapType |= OMP_TGT_MAPTYPE_UVM;
     MapType |= OMP_TGT_MAPTYPE_HOST;
   } else {
+    if (GMode == -5) {
+      LLD_DP("  Arg %d (" DPxMOD ") is intended for device\n", idx,
+             DPxPTR(Base));
+      //MapType |= OMP_TGT_MAPTYPE_SDEV;
+      if (Entry)
+        Entry->ChangeMap = true;
+      return Size;
+    }
     unsigned LocalReuse = getLocalReuse(MapType);
     double LocalReuseFloat = (double)LocalReuse / 5.0;
     double Density = LocalReuseFloat * LTC / Size;
     //if (OnDemand)
     //  MapType |= OMP_TGT_MAPTYPE_UVM;
-    if (Density < 0.5) {
+    //if ((DensityTH < 1.0 && Density < DensityTH) ||
+    //    (DensityTH >= 1.0 && Density > 4.0 && Density < 5.0)) {
+    if (Density < DensityTH) {
       LLD_DP("  Arg %d (" DPxMOD ") is intended for UM (%f)\n", idx,
              DPxPTR(Base), Density);
       if (OnDemand)
@@ -142,8 +155,13 @@ int64_t releaseDataObj(DeviceTy &Device, HostDataToTargetTy *E) {
       E->IsValid = false;
     }
     Device.deviceSize -= Size;
-    Device.RTL->data_delete(Device.RTLDeviceID, (void *)E->TgtPtrBegin);
-    E->IsDeleted = true;
+    int rt =
+        Device.RTL->data_delete(Device.RTLDeviceID, (void *)E->TgtPtrBegin);
+    if (rt != OFFLOAD_SUCCESS)
+      LLD_DP("  Error: Deleting data from device failed.\n");
+    //E->IsDeleted = true;
+    E->TgtPtrBegin = E->HstPtrBegin;
+    setMemMapType(E->MapType, MEM_MAPTYPE_HOST);
   } else if (PreMap == MEM_MAPTYPE_UVM) {
     LLD_DP("  Replace " DPxMOD " from UM, size=%ld\n", DPxPTR(E->HstPtrBegin),
            Size);
@@ -209,7 +227,7 @@ inline bool comparePriority(int64_t MapType, int64_t Size, uint64_t LTC,
     return true;
 }
 
-// lld: compare reuse
+// Compare replacement candidates
 bool compareCandidates(HostDataToTargetTy *A, HostDataToTargetTy *B) {
   if (GMode == -2) {
     return (A->Locality < B->Locality);
@@ -222,6 +240,8 @@ bool compareCandidates(HostDataToTargetTy *A, HostDataToTargetTy *B) {
     return (AR == BR) ? (A->Reuse > B->Reuse) : (AR > BR);
     //return (AR == BR) ? (A->Locality < B->Locality) : (AR > BR);
 #endif
+  } else if (GMode == -5) { // Compare time stamp in LRU mode.
+    return (A->TimeStamp < B->TimeStamp);
   } else
     return (A->Reuse > B->Reuse);
 }
@@ -257,14 +277,19 @@ bool rankArgs(std::pair<int32_t, int64_t> A, std::pair<int32_t, int64_t> B,
     return true;
 }
 
-int64_t replaceDataObjPart(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx, int64_t &MapType, int64_t Size, int64_t AvailSize, void *Base, uint64_t LTC, bool data_region) {
+int64_t replaceDataObjPart(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t
+                           idx, int64_t &MapType, int64_t Size, int64_t
+                           AvailSize, void *Base, uint64_t LTC, bool
+                           data_region) {
   std::vector<HostDataToTargetTy*> ReplaceList;
   for (auto &HT : Device.HostDataToTargetMap) {
     // find objects with poorer locality
     mem_map_type PreMap = getMemMapType(HT.MapType);
     if ((GMode == -2 && PreMap < MEM_MAPTYPE_PART) ||
-        (GMode == -3 && (PreMap == MEM_MAPTYPE_PART && Entry != &HT && comparePriority(MapType, Size, LTC, &HT))) ||
-        (GMode >= -1 && (PreMap == MEM_MAPTYPE_PART && comparePriority(MapType, Size, LTC, &HT)))) {
+        (GMode == -3 && (PreMap == MEM_MAPTYPE_PART && Entry != &HT &&
+                         comparePriority(MapType, Size, LTC, &HT))) ||
+        (GMode >= -1 && (PreMap == MEM_MAPTYPE_PART &&
+                         comparePriority(MapType, Size, LTC, &HT)))) {
       int64_t HTSize = HT.DevSize;
       if (!HT.IsDeleted && HTSize >= 4096) { // Do not replace small objects
         AvailSize += HTSize;
@@ -337,6 +362,7 @@ int64_t replaceDataObj(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx,
                          comparePriority(MapType, Size, LTC, &HT))) ||
         (GMode >= -1 && (PreMap < MEM_MAPTYPE_PART &&
                          comparePriority(MapType, Size, LTC, &HT))) ||
+        (GMode == -5 && PreMap < MEM_MAPTYPE_PART) ||
         (PreMap == MEM_MAPTYPE_PART &&
          Entry != &HT)) { // implicitly assume at most 1 is mapped to part
       int64_t HTSize;
@@ -362,7 +388,7 @@ int64_t replaceDataObj(DeviceTy &Device, HostDataToTargetTy *Entry, int32_t idx,
     mem_map_type PreMap = MEM_MAPTYPE_UNDECIDE;
     if (Entry)
       PreMap = getMemMapType(Entry->MapType);
-    if (PreMap == MEM_MAPTYPE_UNDECIDE) {
+    if (PreMap == MEM_MAPTYPE_UNDECIDE || PreMap == MEM_MAPTYPE_HOST) {
       LLD_DP("  Arg %d (" DPxMOD ") is intended for host\n", idx, DPxPTR(Base));
       setMemMapType(MapType, MEM_MAPTYPE_HOST);
     }
@@ -767,7 +793,8 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
     // Explicit extension of mapped data - not allowed.
     DP("Explicit extension of mapping is not allowed.\n");
   } else if (lr.Flags.InvalidContained ||
-      ((lr.Flags.InvalidExtendsB || lr.Flags.InvalidExtendsA) && IsImplicit)) { // lld: invalid
+             ((lr.Flags.InvalidExtendsB || lr.Flags.InvalidExtendsA) &&
+              IsImplicit)) { // lld: invalid
     auto &HT = *lr.Entry;
     IsNew = true;
     assert(HT.Decided);
@@ -878,8 +905,11 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
         LLD_DP("  Reassociate " DPxMOD " to device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
         tp = HT.TgtPtrBegin;
       } else {
-        LLD_DP("  Remap " DPxMOD " to device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(tp), Size);
         tp = (uintptr_t)RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
+        LLD_DP("  Remap " DPxMOD " to device (" DPxMOD "), size=%ld\n", DPxPTR(HstPtrBegin), DPxPTR(tp), Size);
+        int rt = RTL->data_submit(RTLDeviceID, (void *)tp, HstPtrBegin, Size);
+        if (rt != OFFLOAD_SUCCESS)
+          LLD_DP("Copying data to device failed.\n");
         deviceSize += Size;
       }
     }
@@ -1080,7 +1110,7 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
     }
     LRs[idx] = lr;
   }
-  if (GMode != -4) // do not rank in no rank mode
+  if (GMode != -4 || GMode != -5) // do not rank in no rank and LRU mode
     std::sort(argList.begin(), argList.end(),
               std::bind(rankArgs, std::placeholders::_1, std::placeholders::_2,
                         Device, new_arg_sizes));
@@ -1129,7 +1159,7 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
         new_arg_types[idx] |= OMP_TGT_MAPTYPE_HOST;
       }
     }
-  } else { // global, local, no rank, or reuse distance based
+  } else { // global, local, no rank, LRU, or reuse distance based
     // argument index for partial mapping
     int32_t partial_idx = -1;
     HostDataToTargetTy *partial_HT;
@@ -1143,8 +1173,11 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
       LookupResult lr = LRs[idx];
       HostDataToTargetTy *HT =
           (lr.Entry != Device.HostDataToTargetMap.end() ? &(*lr.Entry) : NULL);
-      if (HT && HT->IsValid && (getMemMapType(HT->MapType) <= MEM_MAPTYPE_UVM))
+      if (HT && HT->IsValid && (getMemMapType(HT->MapType) <= MEM_MAPTYPE_UVM)) {
+        if (GMode == -5)
+          HT->Irreplaceable = true;
         continue;
+      }
       if (HT && HT->IsValid && getMemMapType(HT->MapType) != MEM_MAPTYPE_PART)
         HT->Irreplaceable = true;
       int64_t AvailSize =
@@ -1182,6 +1215,9 @@ target_uvm_data_mapping_opt(DeviceTy &Device, void **args_base, void **args,
     }
     cleanReplaceMetadata(Device);
   }
+  size_t totalmem, freemem;
+  //cuMemGetInfo(&freemem, &totalmem);
+  //LLD_DP("TotalMem=%" PRId64 ", FreeMem=%" PRId64 "\n", totalmem, freemem);
   free(LRs);
   return std::make_pair(new_arg_types, new_arg_sizes);
 }

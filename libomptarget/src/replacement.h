@@ -15,6 +15,8 @@ extern int RecycleMem;
 extern bool PartialMap;
 // Whether to enable on demand fetching
 extern bool OnDemand;
+// The threshold that decides whether to use on demand fetching
+extern float DensityTH;
 // Available device memory size
 extern int64_t total_dev_size;
 // Global time stamp

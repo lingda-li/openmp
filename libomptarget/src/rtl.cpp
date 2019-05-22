@@ -103,6 +103,11 @@ void RTLsTy::LoadRTLs() {
     OnDemand = (std::stoi(envStr) != 0 ? true : false);
     LLD_DP("Set OnDemand to %d\n", OnDemand);
   }
+  envStr = getenv("LLD_UM_TH");
+  if (envStr) {
+    DensityTH = std::stof(envStr);
+    LLD_DP("Set DensityTH to %f\n", DensityTH);
+  }
 
   DP("Loading RTLs...\n");
 
