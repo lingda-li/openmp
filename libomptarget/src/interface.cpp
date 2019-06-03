@@ -305,6 +305,15 @@ EXTERN int __tgt_target_teams_nowait(int64_t device_id, void *host_ptr,
 }
 
 // Push back one component for a user-defined mapper.
+EXTERN int64_t __kmpc_mapper_num_components(void *rt_mapper_handle) {
+  auto *MapperComponentsPtr = (struct MapperComponentsTy *)rt_mapper_handle;
+  int64_t size = MapperComponentsPtr->Components.size();
+  DP("__kmpc_mapper_num_components(Handle=" DPxMOD ") returns %" PRId64 "\n",
+     DPxPTR(rt_mapper_handle), size);
+  return size;
+}
+
+// Push back one component for a user-defined mapper.
 EXTERN void __kmpc_push_mapper_component(void *rt_mapper_handle, void *base,
                                          void *begin, int64_t size,
                                          int64_t type) {
