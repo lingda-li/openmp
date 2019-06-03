@@ -96,6 +96,12 @@ class kmp_stats_list;
 #ifndef HWLOC_OBJ_PACKAGE
 #define HWLOC_OBJ_PACKAGE HWLOC_OBJ_SOCKET
 #endif
+#if HWLOC_API_VERSION >= 0x00020000
+// hwloc 2.0 changed type of depth of object from unsigned to int
+typedef int kmp_hwloc_depth_t;
+#else
+typedef unsigned int kmp_hwloc_depth_t;
+#endif
 #endif
 
 #if KMP_ARCH_X86 || KMP_ARCH_X86_64
@@ -2616,12 +2622,12 @@ typedef struct KMP_ALIGN_CACHE kmp_base_info {
 #if KMP_OS_WINDOWS
   kmp_win32_cond_t th_suspend_cv;
   kmp_win32_mutex_t th_suspend_mx;
-  int th_suspend_init;
+  std::atomic<int> th_suspend_init;
 #endif
 #if KMP_OS_UNIX
   kmp_cond_align_t th_suspend_cv;
   kmp_mutex_align_t th_suspend_mx;
-  int th_suspend_init_count;
+  std::atomic<int> th_suspend_init_count;
 #endif
 
 #if USE_ITT_BUILD
