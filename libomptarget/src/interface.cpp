@@ -304,21 +304,22 @@ EXTERN int __tgt_target_teams_nowait(int64_t device_id, void *host_ptr,
                             arg_sizes, arg_types, team_num, thread_limit);
 }
 
-// Push back one component for a user-defined mapper.
-EXTERN int64_t __kmpc_mapper_num_components(void *rt_mapper_handle) {
+// Get the current number of components for a user-defined mapper.
+EXTERN int64_t __tgt_mapper_num_components(void *rt_mapper_handle) {
   auto *MapperComponentsPtr = (struct MapperComponentsTy *)rt_mapper_handle;
   int64_t size = MapperComponentsPtr->Components.size();
-  DP("__kmpc_mapper_num_components(Handle=" DPxMOD ") returns %" PRId64 "\n",
+  DP("__tgt_mapper_num_components(Handle=" DPxMOD ") returns %" PRId64 "\n",
      DPxPTR(rt_mapper_handle), size);
   return size;
 }
 
 // Push back one component for a user-defined mapper.
-EXTERN void __kmpc_push_mapper_component(void *rt_mapper_handle, void *base,
-                                         void *begin, int64_t size,
-                                         int64_t type) {
-  DP("__kmpc_push_mapper_component(Handle=" DPxMOD ", Base=" DPxMOD
-     ", Begin=" DPxMOD ", Size=%" PRId64 ", Type=0x%" PRIx64 ")\n",
+EXTERN void __tgt_push_mapper_component(void *rt_mapper_handle, void *base,
+                                        void *begin, int64_t size,
+                                        int64_t type) {
+  DP("__tgt_push_mapper_component(Handle=" DPxMOD
+     ") adds an entry (Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
+     ", Type=0x%" PRIx64 ").\n",
      DPxPTR(rt_mapper_handle), DPxPTR(base), DPxPTR(begin), size, type);
   auto *MapperComponentsPtr = (struct MapperComponentsTy *)rt_mapper_handle;
   MapperComponentsPtr->Components.push_back(
