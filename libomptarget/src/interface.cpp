@@ -91,6 +91,26 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
 /// and passes the data to the device.
 EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types) {
+  __tgt_target_data_begin_mapper(device_id, arg_num, args_base, args, arg_sizes,
+                                 arg_types, nullptr);
+}
+
+EXTERN void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
+    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
+    int32_t depNum, void *depList, int32_t noAliasDepNum,
+    void *noAliasDepList) {
+  if (depNum + noAliasDepNum > 0)
+    __kmpc_omp_taskwait(NULL, 0);
+
+  __tgt_target_data_begin_mapper(device_id, arg_num, args_base, args, arg_sizes,
+                                 arg_types, nullptr);
+}
+
+EXTERN void __tgt_target_data_begin_mapper(int64_t device_id, int32_t arg_num,
+                                           void **args_base, void **args,
+                                           int64_t *arg_sizes,
+                                           int64_t *arg_types,
+                                           void **arg_mappers) {
   if (IsOffloadDisabled()) return;
 
   DP("Entering data begin region for device %" PRId64 " with %d mappings\n",
@@ -118,20 +138,20 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
   }
 #endif
 
-  int rc = target_data_begin(Device, arg_num, args_base,
-      args, arg_sizes, arg_types);
+  int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
+                             arg_types, arg_mappers);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 }
 
-EXTERN void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
-    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
-    int32_t depNum, void *depList, int32_t noAliasDepNum,
-    void *noAliasDepList) {
+EXTERN void __tgt_target_data_begin_nowait_mapper(
+    int64_t device_id, int32_t arg_num, void **args_base, void **args,
+    int64_t *arg_sizes, int64_t *arg_types, void **arg_mappers, int32_t depNum,
+    void *depList, int32_t noAliasDepNum, void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
     __kmpc_omp_taskwait(NULL, 0);
 
-  __tgt_target_data_begin(device_id, arg_num, args_base, args, arg_sizes,
-                          arg_types);
+  __tgt_target_data_begin_mapper(device_id, arg_num, args_base, args, arg_sizes,
+                                 arg_types, arg_mappers);
 }
 
 /// passes data from the target, releases target memory and destroys

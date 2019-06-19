@@ -210,8 +210,9 @@ static int32_t member_of(int64_t type) {
 }
 
 /// Internal function to do the mapping and transfer the data to the device
-int target_data_begin(DeviceTy &Device, int32_t arg_num,
-    void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types) {
+int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
+                      void **args, int64_t *arg_sizes, int64_t *arg_types,
+                      void **arg_mappers) {
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
     // Ignore private variables and arrays - there is no mapping for them.
