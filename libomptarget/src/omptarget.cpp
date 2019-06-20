@@ -161,8 +161,8 @@ static int InitLibrary(DeviceTy& Device) {
         DP("Has pending ctors... call now\n");
         for (auto &entry : lib.second.PendingCtors) {
           void *ctor = entry;
-          int rc = target(device_id, ctor, 0, NULL, NULL, NULL,
-                          NULL, 1, 1, true /*team*/);
+          int rc = target(device_id, ctor, 0, NULL, NULL, NULL, NULL, NULL, 1,
+                          1, true /*team*/);
           if (rc != OFFLOAD_SUCCESS) {
             DP("Running ctor " DPxMOD " failed.\n", DPxPTR(ctor));
             Device.PendingGlobalsMtx.unlock();
@@ -706,8 +706,8 @@ static bool isLambdaMapping(int64_t Mapping) {
 /// integer different from zero otherwise.
 int target(int64_t device_id, void *host_ptr, int32_t arg_num, void **args_base,
            void **args, int64_t *arg_sizes, int64_t *arg_types,
-           int32_t team_num, int32_t thread_limit, int IsTeamConstruct,
-           void **arg_mappers) {
+           void **arg_mappers, int32_t team_num, int32_t thread_limit,
+           int IsTeamConstruct) {
   DeviceTy &Device = Devices[device_id];
 
   // Find the table information in the map or look it up in the translation
@@ -763,7 +763,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num, void **args_base,
 
   // Move data to device.
   int rc = target_data_begin(Device, arg_num, args_base, args, arg_sizes,
-      arg_types);
+                             arg_types, arg_mappers);
   if (rc != OFFLOAD_SUCCESS) {
     DP("Call to target_data_begin failed, abort target.\n");
     return OFFLOAD_FAIL;
@@ -911,7 +911,7 @@ int target(int64_t device_id, void *host_ptr, int32_t arg_num, void **args_base,
 
   // Move data from device.
   int rt = target_data_end(Device, arg_num, args_base, args, arg_sizes,
-      arg_types);
+                           arg_types, arg_mappers);
   if (rt != OFFLOAD_SUCCESS) {
     DP("Call to target_data_end failed, abort targe.\n");
     return OFFLOAD_FAIL;
