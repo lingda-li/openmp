@@ -62,8 +62,8 @@ struct MapComponentInfoTy {
 // implementation here.
 struct MapperComponentsTy {
   std::vector<MapComponentInfoTy> Components;
-  size_t size() { return Components.size(); }
-  MapComponentInfoTy *get(uint64_t i) {
+  int32_t size() { return Components.size(); }
+  MapComponentInfoTy *get(int32_t i) {
     assert(i < size() && "Try to access a component that does not exist");
     return &Components[i];
   }

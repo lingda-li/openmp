@@ -425,6 +425,10 @@ EXTERN void __tgt_push_mapper_component(void *rt_mapper_handle, void *base,
      ") adds an entry (Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
      ", Type=0x%" PRIx64 ").\n",
      DPxPTR(rt_mapper_handle), DPxPTR(base), DPxPTR(begin), size, type);
+  printf("__tgt_push_mapper_component(Handle=" DPxMOD
+     ") adds an entry (Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
+     ", Type=0x%" PRIx64 ").\n",
+     DPxPTR(rt_mapper_handle), DPxPTR(base), DPxPTR(begin), size, type);
   auto *MapperComponentsPtr = (struct MapperComponentsTy *)rt_mapper_handle;
   MapperComponentsPtr->Components.push_back(
       MapComponentInfoTy(base, begin, size, type));
