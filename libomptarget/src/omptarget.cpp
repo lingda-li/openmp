@@ -499,131 +499,119 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
   return OFFLOAD_SUCCESS;
 }
 
-/// Map components filled by a user-defined mapper function, when exiting a
-/// target data region.
-int target_data_end_map_components(DeviceTy &Device,
-                                   MapperComponentsTy &Components) {
-  // Process each component.
-  for (int32_t i = 0; i < Components.size(); ++i) {
-    void *HstPtrBegin = Components.get(i)->Begin;
-    int64_t Size = Components.get(i)->Size;
-    int64_t Type = Components.get(i)->Type;
-
-    // Adjust for proper alignment if this is a combined entry (for structs).
-    // Look at the next argument - if that is MEMBER_OF this one, then this one
-    // is a combined entry.
-    int64_t padding = 0;
-    const int next_i = i + 1;
-    if (member_of(Type) < 0 && next_i < Components.size() &&
-        member_of(Components.get(next_i)->Type) == i) {
-      padding = (int64_t)HstPtrBegin % alignment;
-      if (padding) {
-        DP("Using a padding of %" PRId64 " bytes for begin address " DPxMOD
-           "\n",
-           padding, DPxPTR(HstPtrBegin));
-        HstPtrBegin = (char *)HstPtrBegin - padding;
-        Size += padding;
-      }
+/// Map one component when exiting a target data region.
+int target_data_end_component(DeviceTy &Device, void *HstPtrBase,
+                              void *HstPtrBegin, int64_t Size, int64_t Type,
+                              bool IsParentOfNext, void *ParentBegin) {
+  // Adjust for proper alignment if this is a combined entry (for structs).
+  // Look at the next argument - if that is MEMBER_OF this one, then this one
+  // is a combined entry.
+  int64_t padding = 0;
+  if (member_of(Type) < 0 && IsParentOfNext) {
+    padding = (int64_t)HstPtrBegin % alignment;
+    if (padding) {
+      DP("Using a padding of %" PRId64 " bytes for begin address " DPxMOD "\n",
+         padding, DPxPTR(HstPtrBegin));
+      HstPtrBegin = (char *)HstPtrBegin - padding;
+      Size += padding;
     }
+  }
 
-    bool IsLast, IsHostPtr;
-    bool UpdateRef = !(Type & OMP_TGT_MAPTYPE_MEMBER_OF) ||
-                     (Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ);
-    bool ForceDelete = Type & OMP_TGT_MAPTYPE_DELETE;
-    bool HasCloseModifier = Type & OMP_TGT_MAPTYPE_CLOSE;
+  bool IsLast, IsHostPtr;
+  bool UpdateRef = !(Type & OMP_TGT_MAPTYPE_MEMBER_OF) ||
+                   (Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ);
+  bool ForceDelete = Type & OMP_TGT_MAPTYPE_DELETE;
+  bool HasCloseModifier = Type & OMP_TGT_MAPTYPE_CLOSE;
 
-    // If PTR_AND_OBJ, HstPtrBegin is address of pointee
-    void *TgtPtrBegin =
-        Device.getTgtPtrBegin(HstPtrBegin, Size, IsLast, UpdateRef, IsHostPtr);
-    DP("There are %" PRId64 " bytes allocated at target address " DPxMOD
-       " - is%s last\n",
-       Size, DPxPTR(TgtPtrBegin), (IsLast ? "" : " not"));
+  // If PTR_AND_OBJ, HstPtrBegin is address of pointee
+  void *TgtPtrBegin =
+      Device.getTgtPtrBegin(HstPtrBegin, Size, IsLast, UpdateRef, IsHostPtr);
+  DP("There are %" PRId64 " bytes allocated at target address " DPxMOD
+     " - is%s last\n",
+     Size, DPxPTR(TgtPtrBegin), (IsLast ? "" : " not"));
 
-    bool DelEntry = IsLast || ForceDelete;
+  bool DelEntry = IsLast || ForceDelete;
 
-    if ((Type & OMP_TGT_MAPTYPE_MEMBER_OF) &&
-        !(Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
-      DelEntry = false; // protect parent struct from being deallocated
-    }
+  if ((Type & OMP_TGT_MAPTYPE_MEMBER_OF) &&
+      !(Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
+    DelEntry = false; // protect parent struct from being deallocated
+  }
 
-    if ((Type & OMP_TGT_MAPTYPE_FROM) || DelEntry) {
-      // Move data back to the host
-      if (Type & OMP_TGT_MAPTYPE_FROM) {
-        bool Always = Type & OMP_TGT_MAPTYPE_ALWAYS;
-        bool CopyMember = false;
-        if (!(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY) ||
-            HasCloseModifier) {
-          if ((Type & OMP_TGT_MAPTYPE_MEMBER_OF) &&
-              !(Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
-            // Copy data only if the "parent" struct has RefCount==1.
-            int32_t parent_idx = member_of(Type);
-            long parent_rc =
-                Device.getMapEntryRefCnt(Components.get(parent_idx)->Begin);
-            assert(parent_rc > 0 && "parent struct not found");
-            if (parent_rc == 1) {
-              CopyMember = true;
-            }
-          }
-        }
-
-        if ((DelEntry || Always || CopyMember) &&
-            !(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
-              TgtPtrBegin == HstPtrBegin)) {
-          DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
-             Size, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-          int rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, Size);
-          if (rt != OFFLOAD_SUCCESS) {
-            DP("Copying data from device failed.\n");
-            return OFFLOAD_FAIL;
+  if ((Type & OMP_TGT_MAPTYPE_FROM) || DelEntry) {
+    // Move data back to the host
+    if (Type & OMP_TGT_MAPTYPE_FROM) {
+      bool Always = Type & OMP_TGT_MAPTYPE_ALWAYS;
+      bool CopyMember = false;
+      if (!(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY) ||
+          HasCloseModifier) {
+        if ((Type & OMP_TGT_MAPTYPE_MEMBER_OF) &&
+            !(Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
+          // Copy data only if the "parent" struct has RefCount==1.
+          long parent_rc = Device.getMapEntryRefCnt(ParentBegin);
+          assert(parent_rc > 0 && "parent struct not found");
+          if (parent_rc == 1) {
+            CopyMember = true;
           }
         }
       }
 
-      // If we copied back to the host a struct/array containing pointers, we
-      // need to restore the original host pointer values from their shadow
-      // copies. If the struct is going to be deallocated, remove any remaining
-      // shadow pointer entries for this struct.
-      uintptr_t lb = (uintptr_t)HstPtrBegin;
-      uintptr_t ub = (uintptr_t)HstPtrBegin + Size;
-      Device.ShadowMtx.lock();
-      for (ShadowPtrListTy::iterator it = Device.ShadowPtrMap.begin();
-           it != Device.ShadowPtrMap.end();) {
-        void **ShadowHstPtrAddr = (void **)it->first;
-
-        // An STL map is sorted on its keys; use this property
-        // to quickly determine when to break out of the loop.
-        if ((uintptr_t)ShadowHstPtrAddr < lb) {
-          ++it;
-          continue;
-        }
-        if ((uintptr_t)ShadowHstPtrAddr >= ub)
-          break;
-
-        // If we copied the struct to the host, we need to restore the pointer.
-        if (Type & OMP_TGT_MAPTYPE_FROM) {
-          DP("Restoring original host pointer value " DPxMOD " for host "
-             "pointer " DPxMOD "\n",
-             DPxPTR(it->second.HstPtrVal), DPxPTR(ShadowHstPtrAddr));
-          *ShadowHstPtrAddr = it->second.HstPtrVal;
-        }
-        // If the struct is to be deallocated, remove the shadow entry.
-        if (DelEntry) {
-          DP("Removing shadow pointer " DPxMOD "\n", DPxPTR(ShadowHstPtrAddr));
-          it = Device.ShadowPtrMap.erase(it);
-        } else {
-          ++it;
-        }
-      }
-      Device.ShadowMtx.unlock();
-
-      // Deallocate map
-      if (DelEntry) {
-        int rt = Device.deallocTgtPtr(HstPtrBegin, Size, ForceDelete,
-                                      HasCloseModifier);
+      if ((DelEntry || Always || CopyMember) &&
+          !(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
+            TgtPtrBegin == HstPtrBegin)) {
+        DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
+           Size, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
+        int rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, Size);
         if (rt != OFFLOAD_SUCCESS) {
-          DP("Deallocating data from device failed.\n");
+          DP("Copying data from device failed.\n");
           return OFFLOAD_FAIL;
         }
+      }
+    }
+
+    // If we copied back to the host a struct/array containing pointers, we
+    // need to restore the original host pointer values from their shadow
+    // copies. If the struct is going to be deallocated, remove any remaining
+    // shadow pointer entries for this struct.
+    uintptr_t lb = (uintptr_t)HstPtrBegin;
+    uintptr_t ub = (uintptr_t)HstPtrBegin + Size;
+    Device.ShadowMtx.lock();
+    for (ShadowPtrListTy::iterator it = Device.ShadowPtrMap.begin();
+         it != Device.ShadowPtrMap.end();) {
+      void **ShadowHstPtrAddr = (void **)it->first;
+
+      // An STL map is sorted on its keys; use this property
+      // to quickly determine when to break out of the loop.
+      if ((uintptr_t)ShadowHstPtrAddr < lb) {
+        ++it;
+        continue;
+      }
+      if ((uintptr_t)ShadowHstPtrAddr >= ub)
+        break;
+
+      // If we copied the struct to the host, we need to restore the pointer.
+      if (Type & OMP_TGT_MAPTYPE_FROM) {
+        DP("Restoring original host pointer value " DPxMOD " for host "
+           "pointer " DPxMOD "\n",
+           DPxPTR(it->second.HstPtrVal), DPxPTR(ShadowHstPtrAddr));
+        *ShadowHstPtrAddr = it->second.HstPtrVal;
+      }
+      // If the struct is to be deallocated, remove the shadow entry.
+      if (DelEntry) {
+        DP("Removing shadow pointer " DPxMOD "\n", DPxPTR(ShadowHstPtrAddr));
+        it = Device.ShadowPtrMap.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    Device.ShadowMtx.unlock();
+
+    // Deallocate map
+    if (DelEntry) {
+      int rt = Device.deallocTgtPtr(HstPtrBegin, Size, ForceDelete,
+                                    HasCloseModifier);
+      if (rt != OFFLOAD_SUCCESS) {
+        DP("Deallocating data from device failed.\n");
+        return OFFLOAD_FAIL;
       }
     }
   }
@@ -667,129 +655,40 @@ int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
       }
-      // Map the components filled up by the mapper function.
-      int rt = target_data_end_map_components(Device, Components);
-      if (rt != OFFLOAD_SUCCESS) {
-        DP("Failed to map the components specified by a user-defined mapper\n");
-        return OFFLOAD_FAIL;
-      }
-      continue;
-    }
-
-    // Adjust for proper alignment if this is a combined entry (for structs).
-    // Look at the next argument - if that is MEMBER_OF this one, then this one
-    // is a combined entry.
-    int64_t padding = 0;
-    const int next_i = i+1;
-    if (member_of(arg_types[i]) < 0 && next_i < arg_num &&
-        member_of(arg_types[next_i]) == i) {
-      padding = (int64_t)HstPtrBegin % alignment;
-      if (padding) {
-        DP("Using a padding of %" PRId64 " bytes for begin address " DPxMOD
-            "\n", padding, DPxPTR(HstPtrBegin));
-        HstPtrBegin = (char *) HstPtrBegin - padding;
-        data_size += padding;
-      }
-    }
-
-    bool IsLast, IsHostPtr;
-    bool UpdateRef = !(arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) ||
-        (arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ);
-    bool ForceDelete = arg_types[i] & OMP_TGT_MAPTYPE_DELETE;
-    bool HasCloseModifier = arg_types[i] & OMP_TGT_MAPTYPE_CLOSE;
-
-    // If PTR_AND_OBJ, HstPtrBegin is address of pointee
-    void *TgtPtrBegin = Device.getTgtPtrBegin(HstPtrBegin, data_size, IsLast,
-        UpdateRef, IsHostPtr);
-    DP("There are %" PRId64 " bytes allocated at target address " DPxMOD
-        " - is%s last\n", data_size, DPxPTR(TgtPtrBegin),
-        (IsLast ? "" : " not"));
-
-    bool DelEntry = IsLast || ForceDelete;
-
-    if ((arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) &&
-        !(arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
-      DelEntry = false; // protect parent struct from being deallocated
-    }
-
-    if ((arg_types[i] & OMP_TGT_MAPTYPE_FROM) || DelEntry) {
-      // Move data back to the host
-      if (arg_types[i] & OMP_TGT_MAPTYPE_FROM) {
-        bool Always = arg_types[i] & OMP_TGT_MAPTYPE_ALWAYS;
-        bool CopyMember = false;
-        if (!(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY) ||
-            HasCloseModifier) {
-          if ((arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) &&
-              !(arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
-            // Copy data only if the "parent" struct has RefCount==1.
-            int32_t parent_idx = member_of(arg_types[i]);
-            long parent_rc = Device.getMapEntryRefCnt(args[parent_idx]);
-            assert(parent_rc > 0 && "parent struct not found");
-            if (parent_rc == 1) {
-              CopyMember = true;
-            }
-          }
+      // Map each component filled up by the mapper function.
+      for (int32_t j = 0; j < Components.size(); ++j) {
+        const int next_j = j + 1;
+        bool IsParentOfNext = next_j < Components.size() &&
+                              member_of(Components.get(next_j)->Type) == j;
+        void *ParentBegin;
+        int64_t Type = Components.get(j)->Type;
+        if (Type & OMP_TGT_MAPTYPE_MEMBER_OF) {
+          int32_t parent_idx = member_of(Type);
+          ParentBegin = Components.get(parent_idx)->Begin;
         }
-
-        if ((DelEntry || Always || CopyMember) &&
-            !(RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
-              TgtPtrBegin == HstPtrBegin)) {
-          DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
-              data_size, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-          int rt = Device.data_retrieve(HstPtrBegin, TgtPtrBegin, data_size);
-          if (rt != OFFLOAD_SUCCESS) {
-            DP("Copying data from device failed.\n");
-            return OFFLOAD_FAIL;
-          }
-        }
-      }
-
-      // If we copied back to the host a struct/array containing pointers, we
-      // need to restore the original host pointer values from their shadow
-      // copies. If the struct is going to be deallocated, remove any remaining
-      // shadow pointer entries for this struct.
-      uintptr_t lb = (uintptr_t) HstPtrBegin;
-      uintptr_t ub = (uintptr_t) HstPtrBegin + data_size;
-      Device.ShadowMtx.lock();
-      for (ShadowPtrListTy::iterator it = Device.ShadowPtrMap.begin();
-           it != Device.ShadowPtrMap.end();) {
-        void **ShadowHstPtrAddr = (void**) it->first;
-
-        // An STL map is sorted on its keys; use this property
-        // to quickly determine when to break out of the loop.
-        if ((uintptr_t) ShadowHstPtrAddr < lb) {
-          ++it;
-          continue;
-        }
-        if ((uintptr_t) ShadowHstPtrAddr >= ub)
-          break;
-
-        // If we copied the struct to the host, we need to restore the pointer.
-        if (arg_types[i] & OMP_TGT_MAPTYPE_FROM) {
-          DP("Restoring original host pointer value " DPxMOD " for host "
-              "pointer " DPxMOD "\n", DPxPTR(it->second.HstPtrVal),
-              DPxPTR(ShadowHstPtrAddr));
-          *ShadowHstPtrAddr = it->second.HstPtrVal;
-        }
-        // If the struct is to be deallocated, remove the shadow entry.
-        if (DelEntry) {
-          DP("Removing shadow pointer " DPxMOD "\n", DPxPTR(ShadowHstPtrAddr));
-          it = Device.ShadowPtrMap.erase(it);
-        } else {
-          ++it;
-        }
-      }
-      Device.ShadowMtx.unlock();
-
-      // Deallocate map
-      if (DelEntry) {
-        int rt = Device.deallocTgtPtr(HstPtrBegin, data_size, ForceDelete,
-                                      HasCloseModifier);
+        int rt = target_data_end_component(
+            Device, Components.get(j)->Base, Components.get(j)->Begin,
+            Components.get(j)->Size, Type, IsParentOfNext, ParentBegin);
         if (rt != OFFLOAD_SUCCESS) {
-          DP("Deallocating data from device failed.\n");
+          DP("Failed to map the components specified by a user-defined "
+             "mapper\n");
           return OFFLOAD_FAIL;
         }
       }
+    } else {
+      const int next_i = i + 1;
+      bool IsParentOfNext =
+          next_i < arg_num && member_of(arg_types[next_i]) == i;
+      void *ParentBegin;
+      if (arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) {
+        int32_t parent_idx = member_of(arg_types[i]);
+        ParentBegin = args[parent_idx];
+      }
+      int rt =
+          target_data_end_component(Device, args_base[i], args[i], arg_sizes[i],
+                                    arg_types[i], IsParentOfNext, ParentBegin);
+      if (rt != OFFLOAD_SUCCESS)
+        return OFFLOAD_FAIL;
     }
   }
 
