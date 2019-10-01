@@ -375,7 +375,7 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
         }
         int rt = target_data_begin_component(
             Device, Components.get(j)->Begin, Components.get(j)->Size, Type,
-            IsParentOfNext, ParentBegin, &Components.get(j)->Base);
+            IsParentOfNext, ParentBegin, &args_base[i]);
         if (rt != OFFLOAD_SUCCESS) {
           DP("Failed to map the components specified by a user-defined "
              "mapper\n");
