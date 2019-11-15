@@ -69,6 +69,12 @@ struct MapperComponentsTy {
   }
 };
 
+// The mapper function pointer type. It follows the signature below:
+// void .omp_mapper.<type_name>.<mapper_id>.(void *rt_mapper_handle,
+//                                           void *base, void *begin,
+//                                           size_t size, int64_t type);
+typedef void (*MapperFuncPtrTy)(void *, void *, void *, int64_t, int64_t);
+
 ////////////////////////////////////////////////////////////////////////////////
 // implemtation for fatal messages
 ////////////////////////////////////////////////////////////////////////////////

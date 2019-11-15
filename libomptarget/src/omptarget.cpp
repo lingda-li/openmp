@@ -347,17 +347,11 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
     if (arg_mappers && arg_mappers[i]) {
       DP("Call the mapper function " DPxMOD " for the %dth argument\n",
          DPxPTR(arg_mappers[i]), i);
-      MapperComponentsTy Components;
-      // The mapper function follows the signature below:
-      // void .omp_mapper.<type_name>.<mapper_id>.(void *rt_mapper_handle,
-      //                                           void *base, void *begin,
-      //                                           size_t size, int64_t type);
-      void (*mapper_func_ptr)(void *, void *, void *, int64_t, int64_t);
-      mapper_func_ptr =
-          (void (*)(void *, void *, void *, int64_t, int64_t))(arg_mappers[i]);
       // The mapper function fills up Components.
-      (*mapper_func_ptr)((void *)&Components, args_base[i], args[i],
-                         arg_sizes[i], arg_types[i]);
+      MapperComponentsTy Components;
+      MapperFuncPtrTy MapperFuncPtr = (MapperFuncPtrTy)(arg_mappers[i]);
+      (*MapperFuncPtr)((void *)&Components, args_base[i], args[i], arg_sizes[i],
+                       arg_types[i]);
       if (Components.size() >= 0xffff) {
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
@@ -539,17 +533,11 @@ int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
     if (arg_mappers && arg_mappers[i]) {
       DP("Call the mapper function " DPxMOD " for the %dth argument\n",
          DPxPTR(arg_mappers[i]), i);
-      MapperComponentsTy Components;
-      // The mapper function follows the signature below:
-      // void .omp_mapper.<type_name>.<mapper_id>.(void *rt_mapper_handle,
-      //                                           void *base, void *begin,
-      //                                           size_t size, int64_t type);
-      void (*mapper_func_ptr)(void *, void *, void *, int64_t, int64_t);
-      mapper_func_ptr =
-          (void (*)(void *, void *, void *, int64_t, int64_t))(arg_mappers[i]);
       // The mapper function fills up Components.
-      (*mapper_func_ptr)((void *)&Components, args_base[i], args[i],
-                         arg_sizes[i], arg_types[i]);
+      MapperComponentsTy Components;
+      MapperFuncPtrTy MapperFuncPtr = (MapperFuncPtrTy)(arg_mappers[i]);
+      (*MapperFuncPtr)((void *)&Components, args_base[i], args[i], arg_sizes[i],
+                       arg_types[i]);
       if (Components.size() >= 0xffff) {
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
@@ -690,17 +678,11 @@ int target_data_update(DeviceTy &Device, int32_t arg_num, void **args_base,
     if (arg_mappers && arg_mappers[i]) {
       DP("Call the mapper function " DPxMOD " for the %dth argument\n",
          DPxPTR(arg_mappers[i]), i);
-      MapperComponentsTy Components;
-      // The mapper function follows the signature below:
-      // void .omp_mapper.<type_name>.<mapper_id>.(void *rt_mapper_handle,
-      //                                           void *base, void *begin,
-      //                                           size_t size, int64_t type);
-      void (*mapper_func_ptr)(void *, void *, void *, int64_t, int64_t);
-      mapper_func_ptr =
-          (void (*)(void *, void *, void *, int64_t, int64_t))(arg_mappers[i]);
       // The mapper function fills up Components.
-      (*mapper_func_ptr)((void *)&Components, args_base[i], args[i],
-                         arg_sizes[i], arg_types[i]);
+      MapperComponentsTy Components;
+      MapperFuncPtrTy MapperFuncPtr = (MapperFuncPtrTy)(arg_mappers[i]);
+      (*MapperFuncPtr)((void *)&Components, args_base[i], args[i], arg_sizes[i],
+                       arg_types[i]);
       if (Components.size() >= 0xffff) {
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
