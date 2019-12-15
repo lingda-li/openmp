@@ -210,14 +210,17 @@ static int32_t member_of(int64_t type) {
 }
 
 /// Map one component when entering a target data region.
+template <typename GetBeginTy, typename GetTypeTy>
 int target_data_begin_component(DeviceTy &Device, void *HstPtrBegin,
-                                int64_t Size, int64_t Type, bool IsParentOfNext,
-                                void *ParentBegin, void **HstPtrBasePtr) {
+                                int64_t Size, int64_t Type,
+                                void **HstPtrBasePtr, int32_t Idx, int32_t End,
+                                GetBeginTy &GetBegin, GetTypeTy &GetType) {
   // Adjust for proper alignment if this is a combined entry (for structs).
   // Look at the next argument - if that is MEMBER_OF this one, then this one
   // is a combined entry.
   int64_t padding = 0;
-  if (member_of(Type) < 0 && IsParentOfNext) {
+  const int Next = Idx + 1;
+  if (member_of(Type) < 0 && Next < End && member_of(GetType(Next)) == Idx) {
     padding = (int64_t)HstPtrBegin % alignment;
     if (padding) {
       DP("Using a padding of %" PRId64 " bytes for begin address " DPxMOD "\n",
@@ -291,7 +294,8 @@ int target_data_begin_component(DeviceTy &Device, void *HstPtrBegin,
         copy = true;
       } else if (Type & OMP_TGT_MAPTYPE_MEMBER_OF) {
         // Copy data only if the "parent" struct has RefCount==1.
-        long parent_rc = Device.getMapEntryRefCnt(ParentBegin);
+        int32_t parent_idx = member_of(Type);
+        long parent_rc = Device.getMapEntryRefCnt(GetBegin(parent_idx));
         assert(parent_rc > 0 && "parent struct not found");
         if (parent_rc == 1) {
           copy = true;
@@ -356,38 +360,29 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
       }
+
       // Map each component filled up by the mapper function.
-      for (int32_t j = 0; j < Components.size(); ++j) {
-        const int next_j = j + 1;
-        bool IsParentOfNext = next_j < Components.size() &&
-                              member_of(Components.get(next_j)->Type) == j;
-        void *ParentBegin;
-        int64_t Type = Components.get(j)->Type;
-        if (Type & OMP_TGT_MAPTYPE_MEMBER_OF) {
-          int32_t parent_idx = member_of(Type);
-          ParentBegin = Components.get(parent_idx)->Begin;
-        }
+      for (int32_t j = 0, e = Components.size(); j < e; ++j) {
+        // Helper function to get the base address and type.
+        auto &&GetBegin = [&Components](int32_t Idx) {
+          return Components.get(Idx)->Begin;
+        };
+        auto &&GetType = [&Components](int32_t Idx) {
+          return Components.get(Idx)->Type;
+        };
         int rt = target_data_begin_component(
-            Device, Components.get(j)->Begin, Components.get(j)->Size, Type,
-            IsParentOfNext, ParentBegin, &args_base[i]);
-        if (rt != OFFLOAD_SUCCESS) {
-          DP("Failed to map the components specified by a user-defined "
-             "mapper\n");
+            Device, Components.get(j)->Begin, Components.get(j)->Size,
+            Components.get(j)->Type, &args_base[i], j, e, GetBegin, GetType);
+        if (rt != OFFLOAD_SUCCESS)
           return OFFLOAD_FAIL;
-        }
       }
     } else {
-      const int next_i = i + 1;
-      bool IsParentOfNext =
-          next_i < arg_num && member_of(arg_types[next_i]) == i;
-      void *ParentBegin;
-      if (arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) {
-        int32_t parent_idx = member_of(arg_types[i]);
-        ParentBegin = args[parent_idx];
-      }
+      // Helper function to get the base address and type.
+      auto &&GetBegin = [&args](int32_t Idx) { return args[Idx]; };
+      auto &&GetType = [&arg_types](int32_t Idx) { return arg_types[Idx]; };
       int rt = target_data_begin_component(Device, args[i], arg_sizes[i],
-                                           arg_types[i], IsParentOfNext,
-                                           ParentBegin, &args_base[i]);
+                                           arg_types[i], &args_base[i], i,
+                                           arg_num, GetBegin, GetType);
       if (rt != OFFLOAD_SUCCESS)
         return OFFLOAD_FAIL;
     }
@@ -397,14 +392,16 @@ int target_data_begin(DeviceTy &Device, int32_t arg_num, void **args_base,
 }
 
 /// Map one component when exiting a target data region.
+template <typename GetBeginTy, typename GetTypeTy>
 int target_data_end_component(DeviceTy &Device, void *HstPtrBegin, int64_t Size,
-                              int64_t Type, bool IsParentOfNext,
-                              void *ParentBegin) {
+                              int64_t Type, int32_t Idx, int32_t End,
+                              GetBeginTy &GetBegin, GetTypeTy &GetType) {
   // Adjust for proper alignment if this is a combined entry (for structs).
   // Look at the next argument - if that is MEMBER_OF this one, then this one
   // is a combined entry.
   int64_t padding = 0;
-  if (member_of(Type) < 0 && IsParentOfNext) {
+  const int Next = Idx + 1;
+  if (member_of(Type) < 0 && Next < End && member_of(GetType(Next)) == Idx) {
     padding = (int64_t)HstPtrBegin % alignment;
     if (padding) {
       DP("Using a padding of %" PRId64 " bytes for begin address " DPxMOD "\n",
@@ -444,7 +441,8 @@ int target_data_end_component(DeviceTy &Device, void *HstPtrBegin, int64_t Size,
         if ((Type & OMP_TGT_MAPTYPE_MEMBER_OF) &&
             !(Type & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
           // Copy data only if the "parent" struct has RefCount==1.
-          long parent_rc = Device.getMapEntryRefCnt(ParentBegin);
+          int32_t parent_idx = member_of(Type);
+          long parent_rc = Device.getMapEntryRefCnt(GetBegin(parent_idx));
           assert(parent_rc > 0 && "parent struct not found");
           if (parent_rc == 1) {
             CopyMember = true;
@@ -542,38 +540,29 @@ int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
       }
+
       // Map each component filled up by the mapper function.
-      for (int32_t j = 0; j < Components.size(); ++j) {
-        const int next_j = j + 1;
-        bool IsParentOfNext = next_j < Components.size() &&
-                              member_of(Components.get(next_j)->Type) == j;
-        void *ParentBegin;
-        int64_t Type = Components.get(j)->Type;
-        if (Type & OMP_TGT_MAPTYPE_MEMBER_OF) {
-          int32_t parent_idx = member_of(Type);
-          ParentBegin = Components.get(parent_idx)->Begin;
-        }
-        int rt = target_data_end_component(Device, Components.get(j)->Begin,
-                                           Components.get(j)->Size, Type,
-                                           IsParentOfNext, ParentBegin);
-        if (rt != OFFLOAD_SUCCESS) {
-          DP("Failed to map the components specified by a user-defined "
-             "mapper\n");
+      for (int32_t j = 0, e = Components.size(); j < e; ++j) {
+        // Helper function to get the base address and type.
+        auto &&GetBegin = [&Components](int32_t Idx) {
+          return Components.get(Idx)->Begin;
+        };
+        auto &&GetType = [&Components](int32_t Idx) {
+          return Components.get(Idx)->Type;
+        };
+        int rt = target_data_end_component(
+            Device, Components.get(j)->Begin, Components.get(j)->Size,
+            Components.get(j)->Type, j, e, GetBegin, GetType);
+        if (rt != OFFLOAD_SUCCESS)
           return OFFLOAD_FAIL;
-        }
       }
     } else {
-      const int next_i = i + 1;
-      bool IsParentOfNext =
-          next_i < arg_num && member_of(arg_types[next_i]) == i;
-      void *ParentBegin;
-      if (arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) {
-        int32_t parent_idx = member_of(arg_types[i]);
-        ParentBegin = args[parent_idx];
-      }
+      // Helper function to get the base address and type.
+      auto &&GetBegin = [&args](int32_t Idx) { return args[Idx]; };
+      auto &&GetType = [&arg_types](int32_t Idx) { return arg_types[Idx]; };
       int rt =
           target_data_end_component(Device, args[i], arg_sizes[i], arg_types[i],
-                                    IsParentOfNext, ParentBegin);
+                                    i, arg_num, GetBegin, GetType);
       if (rt != OFFLOAD_SUCCESS)
         return OFFLOAD_FAIL;
     }
@@ -687,16 +676,14 @@ int target_data_update(DeviceTy &Device, int32_t arg_num, void **args_base,
         DP("The number of components exceed the limitation\n");
         return OFFLOAD_FAIL;
       }
+
       // Map each component filled up by the mapper function.
-      for (int32_t j = 0; j < Components.size(); ++j) {
+      for (int32_t j = 0, e = Components.size(); j < e; ++j) {
         int rt = target_data_update_component(Device, Components.get(j)->Begin,
                                               Components.get(j)->Size,
                                               Components.get(j)->Type);
-        if (rt != OFFLOAD_SUCCESS) {
-          DP("Failed to map the components specified by a user-defined "
-             "mapper\n");
+        if (rt != OFFLOAD_SUCCESS)
           return OFFLOAD_FAIL;
-        }
       }
     }
     else {
